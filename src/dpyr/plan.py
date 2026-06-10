@@ -49,16 +49,21 @@ def _check_cols(names: list[str], schema: Schema, context: str) -> None:
 
 @dataclass(frozen=True, repr=False)
 class Source(PlanNode):
-    """A named table with a known schema (file, in-memory frame, db table)."""
+    """A named table with a known schema (file, in-memory frame, db table).
+
+    `token` identifies the data payload in the backend registry and
+    participates in the repr, so plan hashes distinguish different data.
+    """
     name: str
     source_schema: tuple[tuple[str, DType], ...]
+    token: str = ""
 
     def __post_init__(self) -> None:
         self._finish(dict(self.source_schema), ())
 
     def __repr__(self) -> str:
         cols = ", ".join(f"{k}: {v!r}" for k, v in self.source_schema)
-        return f"source({self.name!r}, {{{cols}}})"
+        return f"source({self.name!r}, {self.token!r}, {{{cols}}})"
 
 
 @dataclass(frozen=True, repr=False)
@@ -181,6 +186,7 @@ class Slice(PlanNode):
     child: PlanNode
     kind: Literal["head", "tail", "sample"]
     n: int
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         if self.n < 0:
@@ -188,7 +194,8 @@ class Slice(PlanNode):
         self._finish(self.child.schema, self.child.groups)
 
     def __repr__(self) -> str:
-        return f"{self.child!r}.slice_{self.kind}({self.n})"
+        seed = f", seed={self.seed}" if self.seed is not None else ""
+        return f"{self.child!r}.slice_{self.kind}({self.n}{seed})"
 
 
 @dataclass(frozen=True, repr=False)

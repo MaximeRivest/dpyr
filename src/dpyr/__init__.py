@@ -1,8 +1,7 @@
 """dpyr — dplyr for Python, fronting polars and duckdb.
 
-Epic 1 (expression IR & schema engine) is implemented: build verb chains
-against a schema and get immediate validation and output schemas. Execution
-backends arrive in Epics 2 (polars) and 5 (duckdb).
+dplyr's verbs, Python's method chains, real autocompletion, and two
+interchangeable execution backends. See https://github.com/MaximeRivest/dpyr
 """
 
 from . import dtypes
@@ -29,17 +28,51 @@ from .expr import (
     n,
     typed_col,
 )
-from .frame import DFrame, GroupedDFrame, from_schema
+from .frame import (
+    DFrame,
+    GroupedDFrame,
+    from_dict,
+    from_duckdb,
+    from_pandas,
+    from_polars,
+    from_schema,
+    read_csv,
+    read_parquet,
+    read_sql,
+)
+from .materialize import cache_clear, cache_size, options
 from .plan import plan_hash
+from .tidyselect import (
+    across,
+    contains,
+    ends_with,
+    everything,
+    is_bool,
+    is_numeric,
+    is_string,
+    matches,
+    starts_with,
+    where,
+)
 
-__version__ = "0.1.0.dev0"
+__version__ = "1.0.0"
 
 __all__ = [
-    "col", "n", "desc", "if_else", "case_when", "lit",
-    "DFrame", "GroupedDFrame", "from_schema",
+    # frame + sources
+    "DFrame", "GroupedDFrame", "from_schema", "from_polars", "from_dict",
+    "from_pandas", "read_parquet", "read_csv", "from_duckdb", "read_sql",
+    # expressions
+    "col", "n", "desc", "if_else", "case_when", "lit", "Expr", "typed_col",
+    "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr", "infer_dtype",
+    # tidyselect / across
+    "across", "starts_with", "ends_with", "contains", "matches", "where",
+    "everything", "is_numeric", "is_string", "is_bool",
+    # dtypes
     "DType", "INT64", "FLOAT64", "BOOL", "STR", "DATE", "DATETIME", "NULL",
-    "dtypes", "Expr", "infer_dtype", "plan_hash",
-    "typed_col", "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr",
+    "dtypes",
+    # materialization
+    "options", "cache_clear", "cache_size", "plan_hash",
+    # errors
     "DpyrError", "ColumnNotFoundError", "ExprTypeError",
     "DuplicateColumnError", "GroupError",
 ]

@@ -64,9 +64,8 @@ def test_select_subsets_in_order():
     assert out.columns == ["mass", "name"]
 
 
-def test_select_duplicate_raises():
-    with pytest.raises(DuplicateColumnError):
-        sw.select(col.name, col.name)
+def test_select_duplicates_dedupe_like_tidyselect():
+    assert sw.select(col.name, col.name).columns == ["name"]
 
 
 def test_select_keeps_group_columns():

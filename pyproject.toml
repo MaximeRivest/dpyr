@@ -14,12 +14,24 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Scientific/Engineering",
 ]
+dependencies = [
+    "duckdb>=1.5.3",
+    "polars>=1.41.2",
+    "pyarrow>=24.0.0",
+    "pyyaml>=6.0.3",
+]
 
 [project.urls]
 Repository = "https://github.com/maximerivest/dataframe"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff", "mypy", "hypothesis"]
+dev = [
+    "pytest>=8",
+    "ruff",
+    "mypy",
+    "hypothesis",
+    "pandas-stubs>=2.3.3.260113",
+]
 
 [build-system]
 requires = ["hatchling"]
