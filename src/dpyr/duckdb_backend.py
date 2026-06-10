@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import dtypes as dt
 from . import plan as p
-from .backend import DuckPayload, resolve, sources_of
+from .backend import DuckPayload, PolarsPayload, resolve, sources_of
 from .dtypes import DType
 from .errors import DpyrError
 from .expr import (
@@ -358,11 +358,22 @@ def _cols(schema: dict[str, DType]) -> str:
     return ", ".join(q(c) for c in schema)
 
 
+def _bridge_name(token: str) -> str:
+    """Stable per-token view name for in-memory frames scanned by duckdb."""
+    import hashlib
+    return "__dpyr_arrow_" + hashlib.sha256(token.encode()).hexdigest()[:12]
+
+
 def compile_plan(node: p.PlanNode) -> _Compiled:
     if isinstance(node, p.Source):
         payload = resolve(node.token)
-        assert isinstance(payload, DuckPayload)
-        return _Compiled(f"SELECT {_cols(node.schema)} FROM {payload.table_sql}", None)
+        if isinstance(payload, PolarsPayload):
+            # an in-memory frame bridged into duckdb: execute() registers
+            # the arrow data under this name before running the query
+            ref = q(_bridge_name(node.token))
+        else:
+            ref = payload.table_sql
+        return _Compiled(f"SELECT {_cols(node.schema)} FROM {ref}", None)
 
     if isinstance(node, p.Filter):
         c = compile_plan(node.child)
@@ -496,10 +507,14 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             if groups:
                 raise DpyrError("slice_sample() on grouped frames is not supported yet")
             seed = node.seed if node.seed is not None else 0
-            h = _uniq("h")
+            h, ix = _uniq("h"), _uniq("ix")
+            # LCG-mix sampling, identical on both engines (S33)
+            idx = "(row_number() OVER () - 1)"
+            key = (f"((((({idx} + {seed}) % 2147483647) * 48271) "
+                   f"% 2147483647) * 48271) % 2147483647")
             sql = (f"SELECT {_cols(node.schema)} FROM "
-                   f"(SELECT *, hash(row_number() OVER () + {seed}) AS {q(h)} "
-                   f"FROM ({base}) t) t ORDER BY {q(h)} LIMIT {node.n}")
+                   f"(SELECT *, {key} AS {q(h)}, {idx} AS {q(ix)} "
+                   f"FROM ({base}) t) t ORDER BY {q(h)}, {q(ix)} LIMIT {node.n}")
             return _Compiled(f"SELECT {_cols(node.schema)} FROM ({sql}) t", None)
         part = f"PARTITION BY {', '.join(q(g) for g in groups)}" if groups else ""
         rn_over = f"{part} ORDER BY {c.order}".strip() if c.order else part
@@ -640,15 +655,54 @@ def final_sql(node: p.PlanNode) -> str:
     return f"{c.sql} ORDER BY {c.order}" if c.order else c.sql
 
 
+def connection_of(node: p.PlanNode) -> duckdb.DuckDBPyConnection:
+    """The (single) duckdb connection a plan runs on; in-memory-only plans
+    forced onto duckdb get a shared bridge connection."""
+    for s in sources_of(node):
+        payload = resolve(s.token)
+        if isinstance(payload, DuckPayload):
+            return payload.con
+    return _shared_bridge_con()
+
+
+_BRIDGE_CON = None
+
+
+def _shared_bridge_con():
+    global _BRIDGE_CON
+    if _BRIDGE_CON is None:
+        import duckdb as _duckdb
+        _BRIDGE_CON = _duckdb.connect()
+    return _BRIDGE_CON
+
+
+def register_bridges(con: duckdb.DuckDBPyConnection,
+                     node: p.PlanNode) -> list[str]:
+    """Register every in-memory source as an arrow view on `con` (duckdb
+    scans our RAM in place — no copy). Returns the names to unregister."""
+    registered: list[str] = []
+    for src in sources_of(node):
+        payload = resolve(src.token)
+        if isinstance(payload, PolarsPayload):
+            name = _bridge_name(src.token)
+            con.register(name, payload.lf.collect().to_arrow())
+            registered.append(name)
+    return registered
+
+
 def execute(node: p.PlanNode) -> pl.DataFrame:
     import polars as pl
 
     from .polars_backend import PL_DTYPE, _normalize
 
-    payload = resolve(sources_of(node)[0].token)
-    assert isinstance(payload, DuckPayload)
+    con = connection_of(node)
     sql = final_sql(node)
-    out = pl.from_arrow(payload.con.execute(sql).to_arrow_table())
+    registered = register_bridges(con, node)
+    try:
+        out = pl.from_arrow(con.execute(sql).to_arrow_table())
+    finally:
+        for name in registered:
+            con.unregister(name)
     assert isinstance(out, pl.DataFrame)
     out = _normalize(out.lazy()).collect()
     # align dtypes with the plan schema (duckdb may widen/narrow)

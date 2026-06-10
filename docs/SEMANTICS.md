@@ -51,3 +51,5 @@ Rows added during implementation (discovered by the oracle/fuzzer):
 | S30 | `percent_rank` | (min_rank-1)/(non-missing-1) | SQL percent_rank counts NULL rows | **R**: built from min_rank and non-missing count on both backends |
 | S31 | `separate()` sep | regex, default non-alnum | n/a | **pinned**: literal separator string, default "_" |
 | S32 | `unite()` missing values | "NA" string (na.rm=FALSE) / dropped (TRUE) | engines skip or null | **R**: na_rm=False renders 'NA', na_rm=True drops (all-missing rows join to '') |
+| S33 | `slice_sample` algorithm | R PRNG (`sample()`) | engine-native samplers differ | **pinned**: shared LCG-mix ordering — same seed selects the same rows on BOTH engines; differs from R's sampler by construction |
+| S34 | mixing in-memory frames with duckdb tables | n/a | n/a | **pinned**: plans bridge automatically — duckdb scans the arrow data in place (zero-copy); two different duckdb connections still raise |

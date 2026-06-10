@@ -142,10 +142,10 @@ shape: (3, 5)
 
 `slice_head(n)` / `slice_tail(n)` take the first/last *n* rows.
 `slice_sample(n, seed=...)` draws rows at random — pass a seed and the draw
-is reproducible *on that backend* (and safe to cache, since the seed lives in
-the query plan rather than in hidden RNG state). Note that polars and duckdb
-implement sampling differently, so the same seed picks different rows on each
-backend. `slice_min` / `slice_max` take the rows with
+is fully reproducible: dpyr uses one shared sampling algorithm, so the same
+seed selects the **same rows on both engines** (SEMANTICS S33), and the
+result is safe to cache because the seed lives in the query plan rather
+than in hidden RNG state. `slice_min` / `slice_max` take the rows with
 the extreme values of an expression, **keeping ties** like dplyr does:
 
 ```python
@@ -322,6 +322,28 @@ shape: (3, 3)
 When you're done exploring, `.collect()` returns a polars `DataFrame`
 (`.to_pandas()` for pandas), and `.lazy()` / `options.interactive = False`
 turn off implicit execution for production pipelines.
+
+## glimpse — the quick look
+
+For a fast "what am I holding?" check, `glimpse()` prints one line per
+column — dtype plus the leading values — which fits wide tables on screen
+far better than a row-oriented preview:
+
+```python
+harvest.glimpse()
+```
+
+```text
+Rows: 7
+Columns: 4
+$ crop             <Str> 'tomato', 'tomato', 'kale', 'kale', 'garlic', 'garlic', 'squash'
+$ bed              <Str> 'A', 'B', 'A', 'C', 'B', 'C', 'A'
+$ kg               <Float64> 4.2, 3.1, 1.8, NA, 0.9, 1.1, 6.5
+$ days_to_maturity <Int64> 70, 75, 55, 60, 240, 240, 95
+```
+
+It returns the frame, so it slots into the middle of a chain while you
+debug.
 
 ## Where next
 

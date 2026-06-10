@@ -87,7 +87,7 @@ def verb(draw, f: d.DFrame):
     nums, strings = _num_cols(f), _str_cols(f)
     options = ["filter_num", "filter_isna", "mutate_arith", "mutate_ifelse",
                "select", "distinct", "head", "tail", "summarize", "grouped_mutate",
-               "window", "grouped_window", "slice_minmax"]
+               "window", "grouped_window", "slice_minmax", "sample"]
     if strings:
         options += ["filter_str", "mutate_str"]
     choice = draw(st.sampled_from(options))
@@ -164,6 +164,12 @@ def verb(draw, f: d.DFrame):
         keys = [col[k] for k in f.schema]
         return lambda fr, e=e, name=name, key=key: (
             fr.arrange(*keys).group_by(col[key]).mutate(**{name: e}).ungroup())
+    if choice == "sample":
+        k = draw(st.integers(1, 5))
+        seed = draw(st.integers(0, 999))
+        keys = [col[c] for c in f.schema]
+        return lambda fr, k=k, seed=seed: (
+            fr.arrange(*keys).slice_sample(k, seed=seed))
     if choice == "slice_minmax" and nums:
         c = draw(st.sampled_from(nums))
         k = draw(st.integers(1, 4))

@@ -313,10 +313,31 @@ people.inner_join(from_duckdb(con, "badges_local"), on=col.pid)
 # 1 row: pid=1, Ada, gold — and the whole join runs inside con
 ```
 
-The same rule applies one level up: a plan can't mix a duckdb frame with a
-polars frame. That also fails at collect time, with
-`BackendError: plan mixes polars and duckdb sources; collect one side first
-(e.g. .persist() or .to_polars()) before joining across backends`.
+Mixing a duckdb frame with an *in-memory* frame, on the other hand, just
+works (since 1.2.0). The plan runs inside duckdb, which scans the
+in-memory frame's Arrow data in place — no copy, no staging step:
+
+```python
+from dpyr import from_dict
+
+scores = from_dict({"pid": [1, 2], "score": [9.5, 8.0]})  # plain in-memory frame
+people.inner_join(scores, on=col.pid).arrange(col.pid)
+```
+
+```text
+# dpyr frame · source: duckdb · showing 2 of 2 rows
+shape: (2, 3)
+┌─────┬───────┬───────┐
+│ pid ┆ name  ┆ score │
+╞═════╪═══════╪═══════╡
+│ 1   ┆ Ada   ┆ 9.5   │
+│ 2   ┆ Grace ┆ 8.0   │
+└─────┴───────┴───────┘
+```
+
+So the only hard boundary is two *different* duckdb connections; everything
+in RAM is automatically visible to whichever connection the plan runs on
+(SEMANTICS S34).
 
 ## Cheat sheet
 

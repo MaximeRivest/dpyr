@@ -104,6 +104,14 @@ with dplyr tie semantics, `separate`/`unite`/`relocate`,
 fuzz-tested. Fixed a synthesized-SQL name-collision bug that caused rare
 nondeterministic slice results on duckdb (S3).
 
+## 1.2.0 ✅ (published 2026-06-10)
+The engine disappears: in-memory frames bridge into duckdb automatically
+(arrow scanned in place, zero-copy) so mixing is no longer an error;
+collect(engine=) override; persist()/to_table()/to_view() materialize
+fully in-engine (CREATE ... AS <sql>); write_parquet via in-engine COPY;
+readr-style IO (read_duckdb catalog object, read_ipc memory-mapped,
+write_duckdb, glimpse()); slice_sample unified across engines (S33).
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres

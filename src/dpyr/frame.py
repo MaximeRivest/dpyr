@@ -156,9 +156,11 @@ class DFrame(Generic[S]):
         return tuple(out)
 
     # -- materialization (Epic 3) ---------------------------------------
-    def collect(self) -> pl.DataFrame:
-        """Execute the plan and return a polars DataFrame."""
-        return collect(self._plan)
+    def collect(self, engine: str | None = None) -> pl.DataFrame:
+        """Execute the plan and return a polars DataFrame. The engine is
+        chosen automatically (duckdb whenever a duckdb table is involved,
+        polars otherwise); pass engine='duckdb' or 'polars' to override."""
+        return collect(self._plan, engine=engine)
 
     def to_polars(self) -> pl.DataFrame:
         return self.collect()
@@ -238,6 +240,147 @@ class DFrame(Generic[S]):
         html = rows._repr_html_() or ""
         return (f"<div><small># dpyr · source: {kind} · showing "
                 f"{rows.height} of {total_s} rows</small>{html}</div>")
+
+    # -- engine-side outputs (1.2.0) -------------------------------------
+    def _duck_landing(self, con: Any | None):
+        from .backend import backend_kind
+        from .duckdb_backend import connection_of
+        if con is not None:
+            return con
+        if backend_kind(self._plan) == "duckdb":
+            return connection_of(self._plan)
+        return None
+
+    def _create_in_engine(self, kind: str, name: str, con: Any,
+                          temporary: bool) -> DFrame:
+        from .duckdb_backend import final_sql, register_bridges
+        tmp = "TEMP " if temporary else ""
+        bridged = register_bridges(con, self._plan)
+        try:
+            con.execute(
+                f'CREATE OR REPLACE {tmp}{kind} "{name}" AS '
+                f"{final_sql(self._plan)}")
+        finally:
+            if kind == "TABLE":  # a view keeps reading its sources
+                for b in bridged:
+                    con.unregister(b)
+        return from_duckdb(con, name)
+
+    def _plan_cons(self) -> set[int]:
+        from .backend import DuckPayload, resolve, sources_of
+        return {id(p.con) for s in sources_of(self._plan)
+                if isinstance(p := resolve(s.token), DuckPayload)}
+
+    def to_table(self, name: str, con: Any | None = None,
+                 temporary: bool = False) -> DFrame:
+        """Materialize this chain as a duckdb table — in-engine when source
+        and destination share a connection, via arrow otherwise. Returns a
+        frame bound to the new table."""
+        landing = self._duck_landing(con)
+        if landing is None:
+            raise BackendError(
+                "to_table() needs a duckdb destination: chain from a duckdb "
+                "source, pass con=, or use write_duckdb(path, table)")
+        from .materialize import _plan_needs_python
+        plan_cons = self._plan_cons()
+        cross_con = bool(plan_cons) and id(landing) not in plan_cons
+        if _plan_needs_python(self._plan) or cross_con:
+            df = self.collect()
+            landing.register("__dpyr_tt", df.to_arrow())
+            tmp = "TEMP " if temporary else ""
+            landing.execute(f'CREATE OR REPLACE {tmp}TABLE "{name}" AS '
+                            'SELECT * FROM "__dpyr_tt"')
+            landing.unregister("__dpyr_tt")
+            return from_duckdb(landing, name)
+        return self._create_in_engine("TABLE", name, landing, temporary)
+
+    def to_view(self, name: str, con: Any | None = None,
+                temporary: bool = False) -> DFrame:
+        """Register this (lazy) chain as a duckdb VIEW: no materialization,
+        but the pipeline becomes a named object any SQL client can query.
+        In-memory sources stay registered for the connection's lifetime."""
+        landing = self._duck_landing(con)
+        if landing is None:
+            raise BackendError(
+                "to_view() needs a duckdb connection: chain from a duckdb "
+                "source or pass con=")
+        plan_cons = self._plan_cons()
+        if plan_cons and id(landing) not in plan_cons:
+            raise BackendError(
+                "to_view() cannot reference tables from a different duckdb "
+                "connection; use to_table()/write_duckdb() to copy instead")
+        from .materialize import _plan_needs_python
+        if _plan_needs_python(self._plan):
+            raise BackendError(
+                "this chain includes a step that must materialize "
+                "(pivot_wider); use to_table() instead of to_view()")
+        return self._create_in_engine("VIEW", name, landing, temporary)
+
+    def write_duckdb(self, path: str, table: str) -> DFrame:
+        """Persist the result as a table inside a duckdb file (creating
+        the file if needed) — the modern 'save as CSV'."""
+        from .io import _file_con
+        return self.to_table(table, con=_file_con(path))
+
+    def show_query(self) -> str:
+        """The exact program sent to the engine: SQL for duckdb plans,
+        the optimized polars plan otherwise."""
+        from .backend import backend_kind
+        if backend_kind(self._plan) == "duckdb":
+            from .duckdb_backend import final_sql
+            return final_sql(self._plan)
+        from .polars_backend import compile_plan as _pc
+        return _pc(self._plan).explain()
+
+    def write_parquet(self, path: str) -> None:
+        """Write the result to parquet. duckdb plans COPY in-engine; polars
+        plans stream via sink_parquet when possible."""
+        from .backend import backend_kind
+        from .materialize import _plan_needs_python
+        if (backend_kind(self._plan) == "duckdb"
+                and not _plan_needs_python(self._plan)):
+            from .duckdb_backend import final_sql, register_bridges
+            con = self._duck_landing(None)
+            escaped = path.replace("'", "''")
+            bridged = register_bridges(con, self._plan)
+            try:
+                con.execute(f"COPY ({final_sql(self._plan)}) TO '{escaped}' "
+                            "(FORMAT PARQUET)")
+            finally:
+                for b in bridged:
+                    con.unregister(b)
+            return
+        try:
+            from .polars_backend import compile_plan as _pc
+            _pc(self._plan).sink_parquet(path)
+        except Exception:
+            self.collect().write_parquet(path)
+
+    def write_ipc(self, path: str) -> None:
+        """Write the result as an Arrow IPC (Feather v2) file."""
+        from .backend import backend_kind
+        if backend_kind(self._plan) == "polars":
+            try:
+                from .polars_backend import compile_plan as _pc
+                _pc(self._plan).sink_ipc(path)
+                return
+            except Exception:
+                pass
+        self.collect().write_ipc(path)
+
+    def glimpse(self) -> DFrame:
+        """readr-style transposed peek: one line per column with dtype and
+        leading values. Returns the frame, so it chains."""
+        from .materialize import preview
+        rows, total = preview(self._plan, 10)
+        total_s = str(total) if total is not None else "?"
+        print(f"Rows: {total_s}\nColumns: {len(self.columns)}")
+        width = max((len(c) for c in self.columns), default=0)
+        for name, dtype in self._plan.schema.items():
+            values = rows[name].to_list() if name in rows.columns else []
+            shown = ", ".join("NA" if v is None else repr(v) for v in values)
+            print(f"$ {name:<{width}} <{dtype!r}> {shown}")
+        return self
 
     # -- verbs ----------------------------------------------------------
     def filter(self, *predicates: IntoPredicate) -> DFrame:

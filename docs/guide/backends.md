@@ -159,9 +159,11 @@ print(final_sql(by_city.plan))
 SELECT *, row_number() OVER () AS "__rn1" FROM (SELECT "city", CAST(count(*) AS BIGINT) AS "trips", COALESCE(sum("km"), 0.0) AS "total_km" FROM (SELECT "city", "month", "km" FROM "deliveries") t GROUP BY "city") t ORDER BY "total_km" DESC NULLS LAST, "__rn1" ASC
 ```
 
-One duckdb-side effect *is* observable: `.persist()` checkpoints a frame as a
-`TEMP TABLE` on your connection (polars frames persist as in-memory frames
-instead). Temp tables vanish when the connection closes:
+One duckdb-side effect *is* observable: `.persist()` checkpoints a frame as
+a `TEMP TABLE` on your connection (polars frames persist as in-memory
+frames instead). Since 1.2.0 this runs as a single
+`CREATE TEMP TABLE ... AS <query>` *inside* the engine — the rows never
+pass through Python. Temp tables vanish when the connection closes:
 
 ```python
 snap = by_city.persist()
@@ -173,6 +175,59 @@ print(con.execute(
 ```text
 [('deliveries', False), ('dpyr_persist_2', True)]
 ```
+
+## Landing results in the engine
+
+`collect()` pulls rows *out*; these verbs leave them *in*. `to_table()`
+materializes a chain as a real table (in-engine, no Python round trip) and
+returns a frame bound to it; `to_view()` saves the lazy plan itself as a
+named view — zero materialization, and any SQL client on that connection
+can query it; `write_parquet()` compiles to an in-engine `COPY ... TO`:
+
+```python
+top = by_city.filter(col.total_km > 100)
+
+gold = top.to_table("gold_cities")          # CREATE OR REPLACE TABLE ... AS <sql>
+live = by_city.to_view("city_stats")        # a saved query, always fresh
+top.write_parquet("/tmp/gold_cities.parquet")  # COPY (<sql>) TO '...' in-engine
+
+print(sorted(t for t in con.execute(
+    "SELECT table_name FROM information_schema.tables").fetchall()))
+```
+
+Use `show_query()` whenever you want to see exactly what will reach the
+engine — the SQL for duckdb plans, the optimized plan for polars ones:
+
+```python
+print(top.show_query()[:80], "…")
+```
+
+In-memory frames can land too — give `to_table()` a connection
+(`to_table("name", con=con)`), or skip connections entirely with
+`write_duckdb(path, table)`, which creates the database file if needed.
+
+## Opening a database the readr way
+
+For files, you never need a connection object at all. `read_duckdb()`
+opens a database the way `read_csv` opens a CSV — the catalog comes back
+as an object whose attributes are frames:
+
+```python
+gold.write_duckdb("/tmp/shop.db", "gold_cities")
+
+db = dpyr.read_duckdb("/tmp/shop.db")
+print(db.tables)
+city_frame = db.gold_cities                # a lazy frame, schema known
+one_table  = dpyr.read_duckdb("/tmp/shop.db", "gold_cities")  # shortcut
+raw        = db.sql("SELECT count(*) AS n FROM gold_cities")  # escape hatch
+```
+
+Tab completion works on `db.` (table names come from the live catalog),
+and a misspelled table gets a did-you-mean, just like columns do. Arrow
+IPC files round-trip the same way — `write_ipc(path)` / `read_ipc(path)` —
+and `read_ipc` memory-maps, so opening even a huge file is instant. For a
+fast structural look at any frame, `glimpse()` prints one line per column
+with its dtype and leading values.
 
 ## Both backends hand you polars
 
@@ -299,26 +354,49 @@ shape: (4, 3)
 
 Duplicate keys warn and keep the first value (see SEMANTICS S26).
 
-## One plan, one engine
+## Mixing engines: the bridge
 
-A single plan cannot span engines, and dpyr refuses to copy data behind your
-back. Joining a polars frame to a duckdb frame fails at collect time with
-instructions:
+A plan that touches both an in-memory frame and a duckdb table runs inside
+duckdb — and the in-memory side travels for free. duckdb scans the frame's
+Arrow data in place (zero copy), so joining your RAM against a warehouse
+table is just a join (SEMANTICS S34):
+
+```python
+mixed = sales.inner_join(deliveries, on=[col.city, col.month]).arrange(col.city)
+print(mixed.collect())
+```
+
+```text
+shape: (3, 5)
+┌───────────┬───────┬───────┬───────┬────────┐
+│ city      ┆ month ┆ units ┆ price ┆ trucks │
+│ ---       ┆ ---   ┆ ---   ┆ ---   ┆ ---    │
+│ str       ┆ i64   ┆ i64   ┆ f64   ┆ i64    │
+╞═══════════╪═══════╪═══════╪═══════╪════════╡
+│ Aylmer    ┆ 1     ┆ 21    ┆ 3.0   ┆ 2      │
+│ Hull      ┆ 1     ┆ 40    ┆ 2.5   ┆ 3      │
+│ Wakefield ┆ 2     ┆ null  ┆ 4.0   ┆ 1      │
+└───────────┴───────┴───────┴───────┴────────┘
+```
+
+Engine choice is automatic — duckdb whenever a duckdb table is involved,
+polars otherwise — and `collect(engine=...)` overrides it. The one
+asymmetry: duckdb can read our RAM, but polars cannot reach into a duckdb
+catalog, so `engine="polars"` on duckdb-resident data raises:
 
 ```python
 try:
-    sales.inner_join(deliveries, on=[col.city, col.month]).collect()
+    deliveries.collect(engine="polars")
 except dpyr.DpyrError as e:
     print(e)
 ```
 
 ```text
-plan mixes polars and duckdb sources; collect one side first (e.g. .persist() or .to_polars()) before joining across backends
+engine='polars' cannot read duckdb-resident tables; duckdb can read in-memory frames, not vice versa
 ```
 
-The fix is explicit: `from_polars(duck_frame.collect())` to pull the duckdb
-side over, or load the polars side into duckdb yourself. Two tables from
-*different* duckdb connections are rejected too (SEMANTICS S27):
+The remaining hard boundary is two tables from *different* duckdb
+connections — those genuinely cannot meet in one query (SEMANTICS S27):
 
 ```python
 con2 = duckdb.connect()

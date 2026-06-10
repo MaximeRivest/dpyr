@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import plan as p
-from .backend import DuckPayload, PolarsPayload, backend_kind, register, sources_of
+from .backend import DuckPayload, PolarsPayload, backend_kind, register
 
 if TYPE_CHECKING:
     import polars as pl
@@ -42,8 +42,9 @@ def cache_size() -> int:
     return len(_CACHE)
 
 
-def collect(node: p.PlanNode, *, use_cache: bool = True) -> pl.DataFrame:
-    key = p.plan_hash(node)
+def collect(node: p.PlanNode, *, use_cache: bool = True,
+            engine: str | None = None) -> pl.DataFrame:
+    key = p.plan_hash(node) + (f":{engine}" if engine else "")
     if use_cache and key in _CACHE:
         return _CACHE[key]
     if isinstance(node, p.PivotWider):
@@ -71,7 +72,12 @@ def collect(node: p.PlanNode, *, use_cache: bool = True) -> pl.DataFrame:
             out = child.pivot(on=node.names_from, values=node.values_from,
                               index=index, aggregate_function="first")
     else:
-        kind = backend_kind(node)
+        kind = engine or backend_kind(node)
+        if engine == "polars" and backend_kind(node) == "duckdb":
+            from .backend import BackendError
+            raise BackendError(
+                "engine='polars' cannot read duckdb-resident tables; "
+                "duckdb can read in-memory frames, not vice versa")
         if kind == "polars":
             from .polars_backend import compile_plan
             out = compile_plan(node).collect()
@@ -87,30 +93,59 @@ def collect(node: p.PlanNode, *, use_cache: bool = True) -> pl.DataFrame:
 
 def persist_source(node: p.PlanNode) -> p.Source:
     """Materialize a plan and return a Source bound to the result, staying
-    on the original backend (duckdb gets a temp table, S/DESIGN §3)."""
+    on the original backend. On duckdb this is CREATE TEMP TABLE AS <sql>,
+    executed entirely in the engine — the data never enters Python."""
     import polars as pl
 
     from .polars_backend import schema_from_polars
 
     kind = backend_kind(node)
-    df = collect(node)
-    schema = schema_from_polars(df.lazy())
-    if kind == "duckdb":
-        from .backend import resolve
-        payload = resolve(sources_of(node)[0].token)
-        assert isinstance(payload, DuckPayload)
-        con = payload.con
+    if kind == "duckdb" and not _plan_needs_python(node):
+        from .backend import _REGISTRY
+        from .duckdb_backend import (
+            connection_of,
+            final_sql,
+            register_bridges,
+            schema_from_duckdb,
+        )
+        con = connection_of(node)
         token = register(DuckPayload(con, ""), hint="duck-persist")
         tmp = f"dpyr_persist_{token.split(':')[1]}"
-        arrow_tbl = df.to_arrow()  # noqa: F841  (registered by name below)
-        con.register(f"{tmp}_arrow", arrow_tbl)
+        bridged = register_bridges(con, node)
+        try:
+            con.execute(f'CREATE TEMP TABLE "{tmp}" AS {final_sql(node)}')
+        finally:
+            for name in bridged:
+                con.unregister(name)
+        _REGISTRY[token] = DuckPayload(con, f'"{tmp}"')
+        schema = schema_from_duckdb(con, f'"{tmp}"')
+        return p.Source(tmp, tuple(schema.items()), token)
+    df = collect(node)
+    schema = schema_from_polars(df.lazy())
+    if kind == "duckdb":  # plans with python-side ops (pivot_wider)
+        from .backend import _REGISTRY
+        from .duckdb_backend import connection_of
+        con = connection_of(node)
+        token = register(DuckPayload(con, ""), hint="duck-persist")
+        tmp = f"dpyr_persist_{token.split(':')[1]}"
+        con.register(f"{tmp}_arrow", df.to_arrow())
         con.execute(f'CREATE TEMP TABLE "{tmp}" AS SELECT * FROM "{tmp}_arrow"')
         con.unregister(f"{tmp}_arrow")
-        from .backend import _REGISTRY
         _REGISTRY[token] = DuckPayload(con, f'"{tmp}"')
         return p.Source(tmp, tuple(schema.items()), token)
     token = register(PolarsPayload(pl.LazyFrame(df)), hint="persist")
     return p.Source("persisted", tuple(schema.items()), token)
+
+
+def _plan_needs_python(node: p.PlanNode) -> bool:
+    """True if any node must materialize through polars (pivot_wider)."""
+    if isinstance(node, p.PivotWider):
+        return True
+    for f in node.__dataclass_fields__:
+        v = getattr(node, f)
+        if isinstance(v, p.PlanNode) and _plan_needs_python(v):
+            return True
+    return False
 
 
 def preview(node: p.PlanNode, n_rows: int) -> tuple[pl.DataFrame, int | None]:

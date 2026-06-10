@@ -329,8 +329,16 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
         if node.kind == "sample":
             if groups:
                 raise DpyrError("slice_sample() on grouped frames is not supported yet")
-            return lf.collect().sample(min(node.n, 2**31), seed=node.seed,
-                                       shuffle=True).lazy()
+            # LCG-mix sampling, identical on both engines (S33); the seed
+            # is mixed before multiplying so it changes the permutation
+            seed = node.seed if node.seed is not None else 0
+            idx = pl.int_range(pl.len(), dtype=pl.Int64)
+            a = (idx + seed) % 2147483647
+            b = (a * 48271) % 2147483647
+            key = ((b * 48271) % 2147483647).alias("__dpyr_key")
+            return (lf.with_columns(key, idx.alias("__dpyr_idx"))
+                    .sort(["__dpyr_key", "__dpyr_idx"])
+                    .head(node.n).drop(["__dpyr_key", "__dpyr_idx"]))
         if groups:
             gb = lf.group_by(list(groups), maintain_order=True)
             out = gb.head(node.n) if node.kind == "head" else gb.tail(node.n)
