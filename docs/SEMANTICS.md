@@ -1,0 +1,35 @@
+# SEMANTICS — the conformance spec
+
+Where R/dplyr, polars and duckdb disagree, this file records the decision.
+Every row below must be encoded as a test that links back here. Comparison
+against the dplyr oracle is checked *modulo these documented divergences* —
+never fuzzily.
+
+Legend: **R** = follow dplyr · **P** = follow polars/duckdb · **pinned** =
+our own rule, backends forced to comply.
+
+| # | Area | dplyr | polars/duckdb | Decision |
+|---|------|-------|---------------|----------|
+| S1 | Missing values | typed `NA`, `NaN` distinct | `null` vs `NaN` | **pinned**: NA ↔ null bidirectionally; NaN preserved as NaN; document |
+| S2 | `mean/sum/...` with missing | `NA` unless `na.rm=TRUE` | ignore nulls | **P**, with `na_rm: bool = True` kwarg for familiarity |
+| S3 | Sort: NA position & stability | NAs last, stable sort | varies per engine | **pinned**: stable, NAs last; `desc()` keeps NAs last |
+| S4 | `int / int` | promotes to double | varies | **R** (saner) |
+| S5 | Integer overflow | promotes / warns | wraps or errors | **pinned**: Int64 default; overflow errors |
+| S6 | String ordering / collation | locale-dependent (!) | byte/UTF-8 | **pinned**: C-locale codepoint order — *known divergence from R*; oracle harness normalizes |
+| S7 | Grouped result ordering | sorted by group keys | hash order | **R**: sort by keys |
+| S8 | Empty groups / zero-row inputs | specific dplyr behaviors | varies | **R**; port dplyr regression tests |
+| S9 | `summarize` ungrouping | drops last group level | n/a | **R**, including the multi-key behavior |
+| S10 | Join key NA matching | `NA` matches `NA` by default | SQL: NULL ≠ NULL | **R** default, `na_matches="never"` opt-out (mirrors dplyr arg) |
+| S11 | Join suffixes | `.x` / `.y` | `_right` etc. | **R**: `(".x", ".y")` |
+| S12 | Boolean with NA (3-valued logic) | NA propagates; `filter` drops NA | same in SQL | **R/SQL** (they agree); test it anyway |
+| S13 | `n()` / counts dtype | integer | u32/i64 | **pinned**: Int64 |
+| S14 | Division by zero | `Inf`/`NaN` | varies (duckdb errors on int) | **R**: `Inf`/`-Inf`/`NaN`, cast first on duckdb |
+| S15 | `case_when` no match | `NA` | null | agree; pin the result dtype unification rule |
+| S16 | Date/time zones | rich, messy | UTC-leaning | **pinned**: tz-aware UTC default; naive allowed; conversions explicit |
+| S17 | Factors | core R type | none | not supported; oracle harness converts factors → strings before compare |
+| S18 | Recycling length-1 values in `mutate` | yes | literals broadcast | **R** for scalars only; no general recycling |
+| S19 | Float comparison in tests | — | — | harness: sort-normalize where order unspecified + ULP tolerance |
+
+Process: when a differential test fails and the cause is a *new* semantic
+disagreement, the fix is (1) add a row here, (2) encode it in the harness
+normalization or backend compiler, (3) add a dedicated test naming the row.
