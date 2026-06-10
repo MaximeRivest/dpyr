@@ -18,12 +18,12 @@ Everything below is one runnable script. Setup:
 ```python
 import duckdb
 from dpyr import (
-    from_dict, from_duckdb, col, n, across,
+    read, col, n, across,
     starts_with, ends_with, contains, matches, where, everything,
     is_numeric, is_string,
 )
 
-penguins = from_dict({
+penguins = read({
     "species":           ["Adelie", "Adelie", "Gentoo", "Gentoo", "Chinstrap", "Chinstrap"],
     "island":            ["Torgersen", "Dream", "Biscoe", "Biscoe", "Dream", "Dream"],
     "bill_length_mm":    [39.1, 37.8, 47.5, 49.9, 46.5, 51.3],
@@ -320,7 +320,7 @@ header, and the group keys still sorted (S7):
 ```python
 con = duckdb.connect()          # in-memory database
 con.register("penguins", penguins.collect())
-tbl = from_duckdb(con, "penguins")
+tbl = read(con, "penguins")
 
 print(tbl.group_by(col.species).summarize(across(starts_with("bill"), "mean"), n=n()))
 ```

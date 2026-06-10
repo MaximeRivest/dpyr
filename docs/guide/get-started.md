@@ -16,14 +16,14 @@ uv add dpyr
 
 ## A dataset to play with
 
-`from_dict` builds a frame from plain Python lists (polars engine underneath).
+`read` builds a frame from plain Python lists (polars engine underneath).
 Here's a season of harvest records from a small market garden — one row per
 crop picked from a bed:
 
 ```python
-from dpyr import from_dict, col, n, desc, starts_with
+from dpyr import read, col, n, desc, starts_with
 
-harvest = from_dict({
+harvest = read({
     "crop": ["tomato", "tomato", "zucchini", "zucchini",
              "kale", "kale", "garlic", "garlic", "carrot"],
     "bed":  ["A1", "B2", "A1", "C3", "B2", "C3", "A1", "B2", "C3"],
@@ -286,7 +286,7 @@ differential tests against dplyr itself):
 
 ```python
 import duckdb
-from dpyr import from_duckdb
+from dpyr import read
 
 con = duckdb.connect()   # in-memory database
 con.execute("""
@@ -298,7 +298,7 @@ con.execute("""
 """)
 
 print(
-    from_duckdb(con, "picks")
+    read(con, "picks")
     .group_by(col.crop)
     .summarize(picks=n(), total_kg=col.kg.sum())
     .arrange(desc(col.total_kg))
@@ -322,7 +322,7 @@ shape: (3, 3)
 When you're done exploring, `.collect()` returns a polars `DataFrame`
 (`.to_pandas()` for pandas), and `.lazy()` / `options.interactive = False`
 turn off implicit execution for production pipelines. Collecting isn't the
-only way out, though: `write_parquet()`, `to_table()`, and friends land
+only way out, though: `df.write("results.parquet")`, `to_table()`, and friends land
 results straight from the engine, and you can even mix in-memory frames with
 duckdb tables in one plan — see [Backends](backends.md) for the details.
 

@@ -14,15 +14,15 @@ customer can place several orders, and an order can reference a customer we
 don't know about).
 
 ```python
-from dpyr import from_dict, col
+from dpyr import read, col
 
-customers = from_dict({
+customers = read({
     "cust_id": [1, 2, 3, 4],
     "name":    ["Ada", "Grace", "Linus", "Guido"],
     "city":    ["London", "Arlington", "Helsinki", "Haarlem"],
 })
 
-orders = from_dict({
+orders = read({
     "cust_id": [1, 1, 3, 5],
     "item":    ["keyboard", "monitor", "laptop", "mouse"],
     "total":   [55.0, 210.0, 1450.0, 25.0],
@@ -92,12 +92,12 @@ guarantee; see [below](#row-order-is-unspecified-pin-it-with-arrange).
 Pass a list to match on a composite key:
 
 ```python
-sales = from_dict({
+sales = read({
     "year":    [2024, 2024, 2025],
     "region":  ["east", "west", "east"],
     "revenue": [120.0, 95.0, 140.0],
 })
-targets = from_dict({
+targets = read({
     "year":   [2024, 2024, 2025, 2025],
     "region": ["east", "west", "east", "west"],
     "target": [100.0, 100.0, 130.0, 110.0],
@@ -115,8 +115,8 @@ and disambiguates with dplyr's suffixes: `.x` for the left table, `.y` for
 the right (SEMANTICS S11) — not pandas' `_x`/`_y` or polars' `_right`:
 
 ```python
-jan = from_dict({"sku": ["A1", "B2"], "price": [9.99, 24.00]})
-feb = from_dict({"sku": ["A1", "B2"], "price": [10.49, 22.50]})
+jan = read({"sku": ["A1", "B2"], "price": [9.99, 24.00]})
+feb = read({"sku": ["A1", "B2"], "price": [10.49, 22.50]})
 
 jan.inner_join(feb, on=col.sku)
 ```
@@ -146,8 +146,8 @@ is missing. dplyr instead treats two missing keys as equal — and dpyr
 follows dplyr by default on **both** backends (SEMANTICS S10):
 
 ```python
-left  = from_dict({"k": ["x", None], "lv": [1, 2]})
-right = from_dict({"k": ["x", None], "rv": [10, 20]})
+left  = read({"k": ["x", None], "lv": [1, 2]})
+right = read({"k": ["x", None], "rv": [10, 20]})
 
 left.inner_join(right, on=col.k)              # default: na_matches="na"
 ```
@@ -199,8 +199,8 @@ duplicated on both sides, you get a per-key cross product — 2 × 2 = 4 rows
 here:
 
 ```python
-runs   = from_dict({"day": ["mon", "mon"], "run":   ["r1", "r2"]})
-alerts = from_dict({"day": ["mon", "mon"], "alert": ["disk", "cpu"]})
+runs   = read({"day": ["mon", "mon"], "run":   ["r1", "r2"]})
+alerts = read({"day": ["mon", "mon"], "alert": ["disk", "cpu"]})
 
 runs.inner_join(alerts, on=col.day)
 ```
@@ -261,14 +261,13 @@ query — as long as both frames come from the **same** connection:
 
 ```python
 import duckdb
-from dpyr import from_duckdb
 
 con = duckdb.connect()
 con.execute("CREATE TABLE people AS SELECT * FROM (VALUES (1, 'Ada'), (2, 'Grace')) t(pid, name)")
 con.execute("CREATE TABLE badges AS SELECT * FROM (VALUES (1, 'gold'), (2, 'silver'), (2, 'bronze')) t(pid, badge)")
 
-people = from_duckdb(con, "people")
-badges = from_duckdb(con, "badges")
+people = read(con, "people")
+badges = read(con, "badges")
 
 people.inner_join(badges, on=col.pid).arrange(col.pid, col.badge)
 ```
@@ -292,7 +291,7 @@ Building the join succeeds (it's just a plan), but materializing raises a
 ```python
 other_con = duckdb.connect()
 other_con.execute("CREATE TABLE badges2 AS SELECT * FROM (VALUES (1, 'gold')) t(pid, badge)")
-stray = from_duckdb(other_con, "badges2")
+stray = read(other_con, "badges2")
 
 try:
     people.inner_join(stray, on=col.pid).collect()
@@ -309,7 +308,7 @@ for example, round-trip it through arrow:
 
 ```python
 con.register("badges_local", stray.to_polars().to_arrow())
-people.inner_join(from_duckdb(con, "badges_local"), on=col.pid)
+people.inner_join(read(con, "badges_local"), on=col.pid)
 # 1 row: pid=1, Ada, gold — and the whole join runs inside con
 ```
 
@@ -323,9 +322,9 @@ works (since 1.2.0). The plan runs inside duckdb, which scans the
 in-memory frame's Arrow data in place — no copy, no staging step:
 
 ```python
-from dpyr import from_dict
+from dpyr import read
 
-scores = from_dict({"pid": [1, 2], "score": [9.5, 8.0]})  # plain in-memory frame
+scores = read({"pid": [1, 2], "score": [9.5, 8.0]})  # plain in-memory frame
 people.inner_join(scores, on=col.pid).arrange(col.pid)
 ```
 

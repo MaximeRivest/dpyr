@@ -10,9 +10,9 @@ takes the first rows *of each group*. The grouping sticks until you
 bottom as one script.
 
 ```python
-from dpyr import from_dict, col, n, across, where, is_numeric
+from dpyr import read, col, n, across, where, is_numeric
 
-sales = from_dict({
+sales = read({
     "region": ["north", "north", "north", "south", "south", "south", "east", "east"],
     "rep":    ["ana",   "ana",   "bo",    "cy",    "cy",    "dee",   "ed",   "ed"],
     "amount": [100.0,   200.0,   150.0,   300.0,   250.0,   75.0,    500.0,  500.0],
@@ -302,12 +302,11 @@ unspecified on both backends, so pin it with `arrange()` (S21).
 
 ```python
 import duckdb
-from dpyr import from_duckdb
 
 con = duckdb.connect()                                    # in-memory
 sales_pl = sales.collect()                                # polars DataFrame
 con.execute("CREATE TABLE sales AS SELECT * FROM sales_pl")
-tbl = from_duckdb(con, "sales")
+tbl = read(con, "sales")
 print(
     tbl.group_by(col.region)
        .filter(col.amount == col.amount.max())

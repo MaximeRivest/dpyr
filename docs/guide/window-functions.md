@@ -18,9 +18,9 @@ Rows that fall off the edge get null, which makes day-over-day changes a
 one-liner.
 
 ```python
-from dpyr import from_dict, col, lag, lead, desc
+from dpyr import read, col, lag, lead, desc
 
-prices = from_dict({
+prices = read({
     "day":   [1, 2, 3, 4, 5],
     "close": [100, 120, 120, 90, 150],
 })
@@ -84,7 +84,7 @@ Nulls never receive a rank — they rank as null:
 ```python
 from dpyr import row_number, min_rank, dense_rank, percent_rank
 
-scores = from_dict({
+scores = read({
     "player": ["ana", "bo", "cy", "dee", "eli"],
     "score":  [10, 20, 20, 30, None],
 })
@@ -142,7 +142,7 @@ null entirely. dpyr pins the polars behavior on both backends.)
 ```python
 from dpyr import cum_sum, cum_min, cum_max
 
-ledger = from_dict({
+ledger = read({
     "month": [1, 2, 3, 4, 5],
     "delta": [5, None, -2, 8, None],
 })
@@ -174,7 +174,7 @@ On a grouped frame, every window restarts per group. No `over(...)` clause to
 write; the frame's grouping *is* the window partition:
 
 ```python
-sales = from_dict({
+sales = read({
     "store": ["n", "n", "n", "s", "s", "s"],
     "qtr":   [2, 1, 3, 1, 3, 2],
     "rev":   [110, 100, 130, 80, 95, 90],
@@ -227,7 +227,6 @@ on duckdb — dpyr compiles the pending sort into ordered window frames:
 
 ```python
 import duckdb
-from dpyr import from_duckdb
 
 con = duckdb.connect()
 con.execute("CREATE TABLE sales (store TEXT, qtr BIGINT, rev BIGINT)")
@@ -237,7 +236,7 @@ con.execute(
     "('s', 1, 80), ('s', 3, 95), ('s', 2, 90)"
 )
 
-(from_duckdb(con, "sales")
+(read(con, "sales")
     .arrange(col.qtr)
     .group_by(col.store)
     .mutate(prev = lag(col.rev), running = cum_sum(col.rev))

@@ -11,9 +11,9 @@ pip install dpyr        # or: uv add dpyr
 ```
 
 ```python
-from dpyr import from_dict, col, n, desc
+from dpyr import read, col, n, desc
 
-orders = from_dict({
+orders = read({
     "customer": ["ana", "ana", "bo", "bo", "bo", "cy"],
     "amount":   [12.5,  30.0,  8.0,  None, 22.0, 5.0],
     "region":   ["east", "east", "west", "west", "west", "east"],

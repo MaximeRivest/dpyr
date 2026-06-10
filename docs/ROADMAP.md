@@ -119,6 +119,13 @@ duckdb files open as a catalog, write to a named table). write_csv added
 (in-engine COPY on duckdb). Format-specific functions remain as explicit
 escape hatches.
 
+## 1.4.0 ✅ (published 2026-06-10)
+read() is the universal ingest: dicts, polars/pandas frames, arrow
+tables, and live duckdb connections, alongside paths. Docs simplified to
+teach exactly read()/write(); format-specific functions undocumented but
+kept as escape hatches; stubgen emits read(); internals pages dropped
+from the site nav.
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres

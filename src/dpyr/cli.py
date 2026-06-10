@@ -50,7 +50,7 @@ def generate(paths: list[Path]) -> str:
         "",
         "from typing import cast",
         "",
-        "from dpyr import DFrame, read_csv, read_parquet",
+        "from dpyr import DFrame, read",
         "from dpyr.expr import BoolExpr, NumExpr, StrExpr, TemporalExpr",
         "from dpyr.frame import ColsProxy",
         "",
@@ -61,13 +61,12 @@ def generate(paths: list[Path]) -> str:
         lines.append(f"class {cls}(ColsProxy):")
         for name, dtype in schema.items():
             lines.append(f"    {_identifier(name)}: {_EXPR_CLASS[dtype]}")
-        reader = "read_parquet" if path.suffix == ".parquet" else "read_csv"
         var = _identifier(path.stem)
         lines += [
             "",
             "",
             f"def load_{var}() -> DFrame[{cls}]:",
-            f"    return cast(DFrame[{cls}], {reader}({str(path)!r}))",
+            f"    return cast(DFrame[{cls}], read({str(path)!r}))",
             "",
             "",
             f"{var}: DFrame[{cls}] = load_{var}()",

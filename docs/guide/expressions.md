@@ -59,9 +59,9 @@ routes through `bool()` and hits the same error.
 
 ```python
 from datetime import date
-from dpyr import from_dict
+from dpyr import read
 
-plants = from_dict({
+plants = read({
     "plant":    ["Roma tomato", "Cherry tomato", "Basil", "Squash", "Pepper"],
     "family":   ["nightshade", "nightshade", "herb", "cucurbit", "nightshade"],
     "sown":     [date(2026, 3, 14), date(2026, 3, 20), date(2026, 4, 2),
@@ -235,7 +235,6 @@ tree into SQL (`case_when` → `CASE WHEN`, `.is_na()` →
 
 ```python
 import duckdb
-from dpyr import from_duckdb
 
 con = duckdb.connect()   # in-memory
 con.execute("""
@@ -243,7 +242,7 @@ con.execute("""
         ('Roma tomato', 41.5), ('Basil', NULL), ('Pepper', 12.9)
     ) AS t(plant, yield_kg)
 """)
-sales = from_duckdb(con, "sales")
+sales = read(con, "sales")
 print(sales.mutate(
     grade = case_when(
         (col.yield_kg >= 30, "great"),
@@ -368,7 +367,7 @@ import subprocess, sys, tempfile
 from pathlib import Path
 
 workdir = Path(tempfile.mkdtemp())
-plants.collect().write_parquet(workdir / "plants.parquet")
+plants.write(workdir / "plants.parquet")
 
 subprocess.run(["dpyr", "stubgen", str(workdir / "plants.parquet"),
                 "-o", str(workdir / "garden_schemas.py")], check=True)
@@ -380,7 +379,7 @@ print((workdir / "garden_schemas.py").read_text())
 
 from typing import cast
 
-from dpyr import DFrame, read_csv, read_parquet
+from dpyr import DFrame, read
 from dpyr.expr import BoolExpr, NumExpr, StrExpr, TemporalExpr
 from dpyr.frame import ColsProxy
 
@@ -393,7 +392,7 @@ class PlantsCols(ColsProxy):
 
 
 def load_plants() -> DFrame[PlantsCols]:
-    return cast(DFrame[PlantsCols], read_parquet('/tmp/tmpvbdbwibt/plants.parquet'))
+    return cast(DFrame[PlantsCols], read('/tmp/tmpvbdbwibt/plants.parquet'))
 
 
 plants: DFrame[PlantsCols] = load_plants()

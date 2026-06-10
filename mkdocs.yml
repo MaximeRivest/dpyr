@@ -41,8 +41,3 @@ nav:
       - Reshaping: guide/reshaping.md
       - Expressions & autocompletion: guide/expressions.md
       - Backends (polars & duckdb): guide/backends.md
-  - Internals:
-      - Design: DESIGN.md
-      - Semantics: SEMANTICS.md
-      - Testing: TESTING.md
-      - Roadmap: ROADMAP.md

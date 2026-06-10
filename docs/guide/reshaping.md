@@ -3,7 +3,8 @@
 dpyr ships the tidyr-flavored reshaping verbs as plain `DFrame` methods:
 `pivot_longer`, `pivot_wider`, `separate`, `unite`, and `relocate`. They run
 on either backend — every example below works the same whether your frame
-came from `from_dict` (polars) or `from_duckdb` (SQL pushdown). If you know
+came from `read()` on plain Python data (polars) or on a duckdb connection
+(SQL pushdown). If you know
 `pl.DataFrame.unpivot`/`pivot` or pandas `melt`/`pivot_table`, the mapping is
 direct; the differences are in the details (null handling, duplicate keys),
 and those are pinned down in [SEMANTICS.md](../SEMANTICS.md).
@@ -17,9 +18,9 @@ column, their *values* in the `values_to` column; everything you didn't list
 (here `country`) is repeated as an identifier.
 
 ```python
-from dpyr import from_dict, col, starts_with, INT64
+from dpyr import read, col, starts_with, INT64
 
-wide = from_dict({
+wide = read({
     "country":  ["Canada", "France", "Japan"],
     "pop_2000": [30.7, 60.9, 126.8],
     "pop_2010": [34.0, 65.0, 128.1],
@@ -147,7 +148,7 @@ them into list-columns. dpyr instead emits a `UserWarning` and keeps the
 first value per key (SEMANTICS S26):
 
 ```python
-dup = from_dict({
+dup = read({
     "id":  [1, 1, 2],
     "key": ["a", "a", "a"],
     "val": [10, 99, 20],   # id=1, key="a" appears twice
@@ -181,7 +182,7 @@ a column literally named `"null"`.
 With nothing left over to identify rows, you simply get a one-row frame:
 
 ```python
-totals = from_dict({"metric": ["rows", "cols", "cells"], "value": [120, 8, 960]})
+totals = read({"metric": ["rows", "cols", "cells"], "value": [120, 8, 960]})
 print(totals.pivot_wider(names_from=col.metric, values_from=col.value))
 ```
 
@@ -203,7 +204,7 @@ S31). Pieces are assigned left-to-right, so too few pieces leave the
 trailing columns `null`; extra pieces beyond `into` are silently dropped.
 
 ```python
-codes = from_dict({
+codes = read({
     "code":  ["FR-75-Paris", "CA-QC", None, "JP-13-Tokyo-extra"],
     "score": [1, 2, 3, 4],
 })
@@ -246,7 +247,7 @@ Missing values render as the string `"NA"` by default — matching dplyr, and
 surprising if you expected null propagation (SEMANTICS S32):
 
 ```python
-parts = from_dict({
+parts = read({
     "id":    [1, 2, 3, 4],
     "year":  ["2024", "2025", None, None],
     "month": ["01", None, "07", None],
@@ -316,7 +317,6 @@ schema:
 
 ```python
 import duckdb
-from dpyr import from_duckdb
 
 con = duckdb.connect()   # in-memory database
 con.execute("""
@@ -324,7 +324,7 @@ con.execute("""
     SELECT * FROM (VALUES ('north', 10, 12), ('south', 7, 9)) t(region, q1, q2)
 """)
 
-sales = from_duckdb(con, "sales")
+sales = read(con, "sales")
 sales_long = sales.pivot_longer([col.q1, col.q2], names_to="quarter", values_to="units")
 print(sales_long.arrange(col.region, col.quarter))
 print(sales_long.pivot_wider(names_from=col.quarter, values_from=col.units))

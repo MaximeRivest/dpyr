@@ -12,14 +12,14 @@ location and performance, never for behavior.
 ## The polars backend
 
 Anything that starts from in-process data or local files runs on polars:
-`from_dict`, `from_polars`, `from_pandas`, `read_parquet`, `read_csv`.
+`read()` on a dict, a polars or pandas frame, or a `.parquet`/`.csv` path.
 
 ```python
 import polars as pl
 import dpyr
-from dpyr import from_dict, from_polars, col, n, desc
+from dpyr import read, col, n, desc
 
-sales = from_dict({
+sales = read({
     "city":  ["Hull", "Hull", "Aylmer", "Aylmer", "Wakefield", "Wakefield"],
     "month": [1, 2, 1, 2, 1, 2],
     "units": [40, 35, 21, 28, 12, None],
@@ -45,17 +45,17 @@ shape: (6, 4)
 └───────────┴───────┴───────┴───────┘
 ```
 
-`read_parquet` and `read_csv` are scans, not loads — the file is only read
-when something materializes, and only the columns/rows the plan needs:
+`read("x.parquet")` and `read("x.csv")` are scans, not loads — the file is
+only read when something materializes, and only the columns/rows the plan
+needs:
 
 ```python
 import tempfile, pathlib
 
 tmp = pathlib.Path(tempfile.mkdtemp())
-sales.collect().write_parquet(tmp / "sales.parquet")
+sales.write(str(tmp / "sales.parquet"))
 
-from dpyr import read_parquet
-sales_pq = read_parquet(str(tmp / "sales.parquet"))
+sales_pq = read(str(tmp / "sales.parquet"))
 print(sales_pq.schema)
 ```
 
@@ -99,12 +99,11 @@ shape: (3, 2)
 For data that already lives in a database — or is too big to pull into
 memory — point dpyr at a duckdb connection. `duckdb.connect()` gives an
 in-memory database; `duckdb.connect("warehouse.db")` opens a file.
-`from_duckdb(con, table)` wraps an existing table, `read_sql(con, query)`
+`read(con, table)` wraps an existing table, `read(con).sql(query)`
 wraps an arbitrary query as a source:
 
 ```python
 import duckdb
-from dpyr import from_duckdb, read_sql
 
 con = duckdb.connect()   # in-memory; pass a path for a persistent file
 con.execute("""
@@ -114,7 +113,7 @@ con.execute("""
         ('Aylmer', 1, 30.2),    ('Aylmer', 2, 28.9),
         ('Wakefield', 1, 55.0), ('Wakefield', 2, 51.3);
 """)
-deliveries = from_duckdb(con, "deliveries")
+deliveries = read(con, "deliveries")
 
 by_city = (
     deliveries
@@ -124,7 +123,7 @@ by_city = (
 )
 print(by_city)
 
-feb = read_sql(con, "SELECT city, km FROM deliveries WHERE month = 2")
+feb = read(con).sql("SELECT city, km FROM deliveries WHERE month = 2")
 print(feb.schema)
 ```
 
@@ -182,14 +181,14 @@ print(con.execute(
 materializes a chain as a real table (in-engine, no Python round trip) and
 returns a frame bound to it; `to_view()` saves the lazy plan itself as a
 named view — zero materialization, and any SQL client on that connection
-can query it; `write_parquet()` compiles to an in-engine `COPY ... TO`:
+can query it; `write("x.parquet")` compiles to an in-engine `COPY ... TO`:
 
 ```python
 top = by_city.filter(col.total_km > 100)
 
 gold = top.to_table("gold_cities")          # CREATE OR REPLACE TABLE ... AS <sql>
 live = by_city.to_view("city_stats")        # a saved query, always fresh
-top.write_parquet("/tmp/gold_cities.parquet")  # COPY (<sql>) TO '...' in-engine
+top.write("/tmp/gold_cities.parquet")       # COPY (<sql>) TO '...' in-engine
 
 print(sorted(t for t in con.execute(
     "SELECT table_name FROM information_schema.tables").fetchall()))
@@ -204,7 +203,7 @@ print(top.show_query()[:80], "…")
 
 In-memory frames can land too — give `to_table()` a connection
 (`to_table("name", con=con)`), or skip connections entirely with
-`write_duckdb(path, table)`, which creates the database file if needed.
+`df.write(path, table)`, which creates the database file if needed.
 
 ## Opening files the readr way
 
@@ -214,8 +213,6 @@ dispatching on the extension — `.parquet`/`.pq`, `.csv`,
 needs a table name when writing, and opens as a catalog when reading:
 
 ```python
-from dpyr import read
-
 gold.write("/tmp/shop.db", "gold_cities")  # a table inside a duckdb file
 
 db = read("/tmp/shop.db")                  # the whole catalog
@@ -224,10 +221,6 @@ city_frame = db.gold_cities                # a lazy frame, schema known
 one_table  = read("/tmp/shop.db", "gold_cities")              # shortcut
 raw        = db.sql("SELECT count(*) AS n FROM gold_cities")  # escape hatch
 ```
-
-The format-specific functions (`read_parquet`, `read_csv`, `read_ipc`,
-`read_duckdb`, and the matching `write_*` methods) remain for files whose
-extension doesn't say what they are.
 
 Tab completion works on `db.` (table names come from the live catalog),
 and a misspelled table gets a did-you-mean, just like columns do. Arrow
@@ -273,25 +266,25 @@ print(len(deliveries))                                      # recomputed
 7
 ```
 
-File-backed sources are *not* exempt. `read_parquet`/`read_csv` tag the
+File-backed sources are *not* exempt. `read()` on a file path tags the
 source with the file's path + mtime + size — but only once, at construction
 (`_file_token` in `frame.py`). A frame you are already holding keeps that
 original tag, so editing the file on disk does not change its plan hash:
 it keeps returning the cached rows. `cache_clear()` doesn't rescue it
 either — the captured scan pinned the old file's metadata, and collecting
 now raises a polars `ComputeError`. To see the new contents, construct a
-*new* source with `read_parquet(path)`: the fresh mtime/size give it a
+*new* source with `read(path)`: the fresh mtime/size give it a
 fresh plan hash that never collides with the stale entry. (This is why
 re-running the notebook cell that creates the source picks up file edits —
 that's reconstruction, not cache invalidation.)
 
 ```python
 pq = str(tmp / "sales.parquet")
-held = read_parquet(pq)
+held = read(pq)
 print(len(held))                            # collects and caches
-sales.collect().head(2).write_parquet(pq)   # rewrite the file: 2 rows now
+sales.slice_head(n=2).write(pq)             # rewrite the file: 2 rows now
 print(len(held))                            # same tag, same hash: stale
-print(len(read_parquet(pq)))                # new source, new tag: fresh
+print(len(read(pq)))                        # new source, new tag: fresh
 
 dpyr.cache_clear()
 try:
@@ -414,7 +407,7 @@ con2.execute(
     "CREATE TABLE depots AS SELECT * FROM (VALUES ('Hull', 4), ('Aylmer', 2)) t(city, docks)"
 )
 try:
-    deliveries.inner_join(from_duckdb(con2, "depots"), on=col.city).collect()
+    deliveries.inner_join(read(con2, "depots"), on=col.city).collect()
 except dpyr.DpyrError as e:
     print(e)
 ```
@@ -438,7 +431,7 @@ backends are normalized to them on ingest:
 | `Datetime` | cast to microsecond precision | `TIMESTAMP` |
 
 ```python
-odd = from_polars(pl.DataFrame({
+odd = read(pl.DataFrame({
     "tiny": pl.Series([1, 2], dtype=pl.Int8),
     "f32":  pl.Series([1.5, 2.5], dtype=pl.Float32),
 }))
@@ -452,7 +445,7 @@ print(deliveries.schema)   # INTEGER and DOUBLE arrived as Int64/Float64 too
 ```
 
 Columns outside this set are rejected up front rather than half-supported —
-`from_duckdb` on a table with a `BLOB` or nested column raises
+`read(con, table)` on a table with a `BLOB` or nested column raises
 `DpyrError: column 'payload' has unsupported duckdb type BLOB`. Int64 is the
 one integer type (S5), counts are Int64 (S13), `int / int` gives Float64
 (S4), and datetimes are microsecond-precision (S16).
@@ -462,7 +455,7 @@ one integer type (S5), counts are Int64 (S13), `int / int` gives Float64
 - **polars** — data already in memory, parquet/CSV files that fit on one
   machine, tight notebook loops. Lowest overhead per query.
 - **duckdb** — data already in a `.db` file or larger than RAM, sources you
-  want to define in SQL (`read_sql`), or pipelines where the heavy lifting
+  want to define in SQL (`read(con).sql(...)`), or pipelines where the heavy lifting
   should stay inside the database and only summaries come back.
 
 Since both return polars frames and obey the same semantics, switching is a

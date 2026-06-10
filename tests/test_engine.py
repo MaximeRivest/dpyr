@@ -238,3 +238,24 @@ def test_write_csv_in_engine(tmp_path):
     p = str(tmp_path / "out.csv")
     d.from_duckdb(con, "t").mutate(y=col.x * 2).write_csv(p)
     assert d.read(p).collect()["y"].to_list() == [0, 2, 4]
+
+
+def test_read_is_the_universal_ingest():
+    import polars as pl
+    import pyarrow as pa
+    data = {"x": [1, 2], "g": ["a", "b"]}
+    expected = d.read(data).collect().to_dicts()
+    assert d.read(pl.DataFrame(data)).collect().to_dicts() == expected
+    assert d.read(pl.LazyFrame(data)).collect().to_dicts() == expected
+    assert d.read(pa.table(data)).collect().to_dicts() == expected
+    import pandas as pd
+    assert d.read(pd.DataFrame(data)).collect().to_dicts() == expected
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t AS SELECT 1 AS x")
+    db = d.read(con)
+    assert isinstance(db, d.Database) and db.tables == ["t"]
+    assert d.read(con, "t").collect()["x"].to_list() == [1]
+    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+        d.read(data, "t")
+    with pytest.raises(d.DpyrError, match="doesn't know what to do"):
+        d.read(42)

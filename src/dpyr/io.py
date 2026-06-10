@@ -106,38 +106,66 @@ _DB_SUFFIXES = (".db", ".duckdb", ".ddb")
 _IPC_SUFFIXES = (".arrow", ".feather", ".ipc")
 
 
-def read(path: str, table: str | None = None) -> DFrame | Database:
-    """The one reader: dispatches on file extension.
+def read(source: Any, table: str | None = None) -> DFrame | Database:
+    """The one way in. Paths dispatch on extension; everything else
+    dispatches on type:
 
-        read("orders.parquet")           # parquet scan
-        read("orders.csv")               # csv scan
-        read("orders.arrow")             # arrow IPC, memory-mapped
-        read("shop.db")                  # duckdb catalog -> Database
-        read("shop.db", "orders")        # one duckdb table -> frame
-        read("data/*.parquet")           # globs work for parquet/csv
-
-    The format-specific functions (read_parquet, read_csv, read_ipc,
-    read_duckdb) remain for files with unusual extensions.
+        read("orders.parquet")            # parquet scan (globs work)
+        read("orders.csv")                # csv scan
+        read("orders.arrow")              # arrow IPC, memory-mapped
+        read("shop.db")                   # duckdb file -> Database catalog
+        read("shop.db", "orders")         # one duckdb table -> frame
+        read({"x": [1, 2]})               # plain Python data
+        read(polars_or_pandas_dataframe)  # zero/near-zero copy
+        read(arrow_table)
+        read(duckdb_connection)           # live connection -> Database
+        read(duckdb_connection, "orders") # one table on that connection
     """
+    import duckdb
+
+    from .frame import from_dict, from_polars
+    if isinstance(source, dict):
+        if table is not None:
+            raise DpyrError("read(table=...) only applies to duckdb sources")
+        return from_dict(source)
+    if isinstance(source, duckdb.DuckDBPyConnection):
+        db = Database(source, "connection")
+        return db.table(table) if table is not None else db
+    if not isinstance(source, str):
+        if table is not None:
+            raise DpyrError("read(table=...) only applies to duckdb sources")
+        import polars as pl
+        if isinstance(source, (pl.DataFrame, pl.LazyFrame)):
+            return from_polars(source)
+        type_name = f"{type(source).__module__}.{type(source).__name__}"
+        if type_name.startswith("pandas."):
+            return from_polars(pl.from_pandas(source))
+        if type_name.startswith("pyarrow."):
+            out = pl.from_arrow(source)
+            assert isinstance(out, pl.DataFrame)
+            return from_polars(out)
+        raise DpyrError(
+            f"read() doesn't know what to do with {type_name}; give it a "
+            "path, dict, polars/pandas frame, arrow table, or duckdb "
+            "connection")
     import pathlib
-    suffix = pathlib.PurePath(path).suffix.lower()
+    suffix = pathlib.PurePath(source).suffix.lower()
     if suffix in _DB_SUFFIXES:
-        return read_duckdb(path, table)
+        return read_duckdb(source, table)
     if table is not None:
         raise DpyrError(
-            f"read(table=...) only applies to duckdb files, not {suffix!r}")
+            f"read(table=...) only applies to duckdb sources, not {suffix!r}")
     from .frame import read_csv, read_parquet
     if suffix in (".parquet", ".pq"):
-        return read_parquet(path)
+        return read_parquet(source)
     if suffix == ".csv":
-        return read_csv(path)
+        return read_csv(source)
     if suffix in _IPC_SUFFIXES:
-        return read_ipc(path)
+        return read_ipc(source)
     raise DpyrError(
-        f"read() can't infer a format from {path!r} (suffix {suffix!r}); "
+        f"read() can't infer a format from {source!r} (suffix {suffix!r}); "
         "supported: .parquet/.pq, .csv, .arrow/.feather/.ipc, "
-        ".db/.duckdb/.ddb — or call read_parquet/read_csv/read_ipc/"
-        "read_duckdb directly")
+        ".db/.duckdb/.ddb")
 
 
 def read_ipc(path: str) -> DFrame:

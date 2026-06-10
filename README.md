@@ -38,11 +38,11 @@ chain runs as one fused query with predicate pushdown. That combination —
 
 ```python
 import duckdb
-from dpyr import from_duckdb, from_polars, from_dict
+from dpyr import read
 
-df  = from_dict({"x": [1, 2, 3], "g": ["a", "a", "b"]})   # polars engine
+df  = read({"x": [1, 2, 3], "g": ["a", "a", "b"]})   # polars engine
 con = duckdb.connect("warehouse.db")
-tbl = from_duckdb(con, "events")                          # SQL pushdown
+tbl = read(con, "events")                            # SQL pushdown
 ```
 
 Identical chains produce identical results on both engines — enforced by a
@@ -90,12 +90,12 @@ the dplyr behaviors, deliberately.
 ## The database is a destination, not just a source
 
 ```python
-db = dpyr.read("warehouse.db")            # catalog object: db.tables, db.orders
+db = read("warehouse.db")                 # catalog object: db.tables, db.orders
 gold = db.orders.group_by(col.region).summarize(rev = col.amount.sum())
 gold.to_table("gold_revenue")             # CREATE TABLE AS <sql>, fully in-engine
 gold.to_view("gold_live")                 # the lazy plan as a named view
 gold.write("gold.parquet")                # in-engine COPY (extension dispatch)
-mem = from_dict({"region": ["east"], "target": [1000.0]})
+mem = read({"region": ["east"], "target": [1000.0]})
 gold.inner_join(mem, on = col.region)     # in-memory frames bridge into duckdb
                                           # automatically (arrow, zero-copy)
 ```
