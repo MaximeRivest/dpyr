@@ -2,7 +2,7 @@
 
 Two words cover every way in and out of dpyr: `read()` and `.write()`.
 `read()` takes a path, a URL, or any tabular object in memory and gives
-you a frame (or a database catalog); `.write()` sends a result to any of
+you a dataframe (or a database catalog); `.write()` sends a result to any of
 the same places. Whatever the source, the data ends up as Arrow in RAM,
 and your verbs run on polars or duckdb — you never pick a parser.
 

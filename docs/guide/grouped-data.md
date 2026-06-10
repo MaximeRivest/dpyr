@@ -2,7 +2,7 @@
 
 In pandas and polars, `groupby`/`group_by` is the entrance to an aggregation:
 group, aggregate, back to a flat table. dpyr follows dplyr instead:
-`group_by` attaches a *persistent grouping* to the frame, and every verb you
+`group_by` attaches a *persistent grouping* to the dataframe, and every verb you
 call afterwards interprets itself per group — `mutate` becomes a window
 computation, `filter` tests rows against group-level values, `slice_head`
 takes the first rows *of each group*. The grouping sticks until you
@@ -32,7 +32,7 @@ DFrame
 ```
 
 `group_by` returns a `GroupedDFrame` — a distinct type, not a flag on the
-frame. Your IDE's completion surface changes with it, the active keys are
+dataframe. Your IDE's completion surface changes with it, the active keys are
 always visible in the repr header and on the `.groups` property (a tuple of
 column names), and `ungroup()` hands back a plain `DFrame`. No data moved in
 any of this: like every dpyr verb, `group_by` only added a node to the lazy
@@ -95,9 +95,9 @@ group keys on both backends (S7), and `n()` always produces Int64 (S13).
 
 ## Grouped `mutate` and `filter` are window operations
 
-On a grouped frame, aggregates inside `mutate` are evaluated **per group and
+On a grouped dataframe, aggregates inside `mutate` are evaluated **per group and
 broadcast back to every row** — what SQL calls a window function, and what
-pandas spells `transform`. The frame keeps its original height:
+pandas spells `transform`. The dataframe keeps its original height:
 
 ```python
 dev = sales.group_by(col.region).mutate(
@@ -152,7 +152,7 @@ Both stay grouped, so you can keep chaining grouped verbs (or `ungroup()`).
 
 ## The other verbs respect groups too
 
-**`count(...)`** on a grouped frame adds its columns to the existing keys,
+**`count(...)`** on a grouped dataframe adds its columns to the existing keys,
 counts, and — via the peeling rule — comes back grouped by the *original*
 keys, exactly as in dplyr:
 
@@ -226,7 +226,7 @@ print(pairs.columns, len(pairs))
 ['region', 'rep'] 5
 ```
 
-**`select(...)`** refuses to drop a group key — a frame can't end up grouped
+**`select(...)`** refuses to drop a group key — a dataframe can't end up grouped
 by a column it no longer has. And **`across(...)`** goes the other way: its
 selector never matches the keys, so `where(is_numeric)` means "every numeric
 column *except* `region`" and you can't aggregate your own keys by accident:
@@ -252,7 +252,7 @@ shape: (3, 3)
 
 ## `persist()` keeps the grouping
 
-`persist()` materializes the plan so far and rebinds the frame to the result
+`persist()` materializes the plan so far and rebinds the dataframe to the result
 (on duckdb, a temp table). It's a checkpoint, not a semantic boundary: the
 grouping is reattached to the snapshot, mirroring dplyr's `compute()`.
 
@@ -270,7 +270,7 @@ GroupedDFrame ('region',)
 ## The classic gotcha: forgetting `ungroup()`
 
 Because grouping is sticky, an aggregate that you *meant* to run over the
-whole frame quietly runs per group instead. The same `mutate` produces shares
+whole dataframe quietly runs per group instead. The same `mutate` produces shares
 of the **region** total or of the **grand** total depending on whether the
 grouping is still active:
 
@@ -290,8 +290,8 @@ The same trap exists for `slice_head(5)` (5 rows *per group*, not 5 rows
 total). dpyr softens it where it can: the repr header always shows
 `groups: ...`, `GroupedDFrame` is a separate type so it shows up in type
 hints and tracebacks, and ambiguous operations fail loudly — passing a
-still-grouped frame as the right-hand side of a join raises
-`GroupError: joining a grouped frame is not supported; ungroup() it first`.
+still-grouped dataframe as the right-hand side of a join raises
+`GroupError: joining a grouped dataframe is not supported; ungroup() it first`.
 
 ## Same semantics on duckdb
 

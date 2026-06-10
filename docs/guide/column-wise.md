@@ -9,7 +9,7 @@ into two composable pieces, both borrowed from dplyr:
 - **`across()`** answers *what to do to each of them*.
 
 Selectors work anywhere a column set is expected — `select()`, `relocate()`,
-and inside `across()` — and they resolve against the frame's schema at the
+and inside `across()` — and they resolve against the dataframe's schema at the
 moment the verb is called, so a bad pattern fails on that line, not at
 `collect()` time.
 
@@ -313,7 +313,7 @@ print(penguins.rename(bill_len=col.bill_length_mm, group="species").columns)
 
 ## The same code on duckdb
 
-None of the above is polars-specific. Point a frame at a duckdb table and
+None of the above is polars-specific. Point a dataframe at a duckdb table and
 the identical chain compiles to SQL instead — note `source: duckdb` in the
 header, and the group keys still sorted (S7):
 

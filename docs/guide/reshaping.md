@@ -2,7 +2,7 @@
 
 dpyr ships the tidyr-flavored reshaping verbs as plain `DFrame` methods:
 `pivot_longer`, `pivot_wider`, `separate`, `unite`, and `relocate`. They run
-on either backend — every example below works the same whether your frame
+on either backend — every example below works the same whether your dataframe
 came from `read()` on plain Python data (polars) or on a duckdb connection
 (SQL pushdown). If you know
 `pl.DataFrame.unpivot`/`pivot` or pandas `melt`/`pivot_table`, the mapping is
@@ -179,7 +179,7 @@ a column literally named `"null"`.
 
 ### No id columns
 
-With nothing left over to identify rows, you simply get a one-row frame:
+With nothing left over to identify rows, you simply get a one-row dataframe:
 
 ```python
 totals = read({"metric": ["rows", "cols", "cells"], "value": [120, 8, 960]})

@@ -20,7 +20,7 @@ chain:
   the result as **parquet** (lossless types, NA fidelity — never CSV) into
   `tests/golden/`.
 - pytest runs the same spec through our library (both backends) and
-  asserts frame equality via the normalization harness (see SEMANTICS.md
+  asserts dataframe equality via the normalization harness (see SEMANTICS.md
   S6/S17/S19).
 
 **R stays out of the inner loop.** Golden parquets are generated offline
@@ -40,7 +40,7 @@ version is pinned and recorded in fixture metadata.
 
 ## Layer 3 — property-based testing (Hypothesis)
 
-Strategies generate small random frames (mixed dtypes, nulls, empty,
+Strategies generate small random dataframes (mixed dtypes, nulls, empty,
 single-row, duplicates) and type-correct random verb chains (a grammar
 over the IR).
 

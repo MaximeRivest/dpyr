@@ -6,7 +6,7 @@ by peeking at *other* rows: the previous row (`lag`), the row's position in a
 sorted order (`min_rank`), or everything up to here (`cum_sum`). If you know
 `Series.shift`/`rank`/`cum_sum` from pandas or polars, these are the same ideas
 — with one twist that dpyr inherits from dplyr: windows automatically respect
-the frame's active `group_by()` and any `arrange()` that came before them.
+the dataframe's active `group_by()` and any `arrange()` that came before them.
 
 All of the functions below are top-level imports and are used inside
 `mutate()` or `filter()` — never `summarize()` (more on that at the end).
@@ -170,8 +170,8 @@ Month 3 reads `3 = 5 + (-2)`: the running total survived the null at month 2.
 
 ## Windows follow your groups — and your sort order
 
-On a grouped frame, every window restarts per group. No `over(...)` clause to
-write; the frame's grouping *is* the window partition:
+On a grouped dataframe, every window restarts per group. No `over(...)` clause to
+write; the dataframe's grouping *is* the window partition:
 
 ```python
 sales = read({
@@ -223,7 +223,7 @@ in that order (SEMANTICS S28):
 ```
 
 Now `prev` is genuinely "last quarter, same store". The exact same chain runs
-on duckdb — dpyr compiles the pending sort into ordered window frames:
+on duckdb — dpyr compiles the pending sort into ordered window dataframes:
 
 ```python
 import duckdb
@@ -272,7 +272,7 @@ filter is the classic "best n rows per group" recipe:
 ## The shortcut: `slice_min` / `slice_max`
 
 That pattern is common enough to have verbs.
-`slice_max(col.rev, n=2)` on a grouped frame keeps each store's two highest
+`slice_max(col.rev, n=2)` on a grouped dataframe keeps each store's two highest
 revenues — it is implemented as exactly the `min_rank` filter above:
 
 ```python

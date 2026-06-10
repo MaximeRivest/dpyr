@@ -1,6 +1,6 @@
 # Joins
 
-dpyr gives you dplyr's two join families as methods on any frame:
+dpyr gives you dplyr's two join families as methods on any dataframe:
 
 - **Mutating joins** — `inner_join`, `left_join`, `right_join`, `full_join` —
   pull columns from a second table into the first.
@@ -256,8 +256,8 @@ shape: (6, 5)
 
 ## Joins on duckdb: one connection per plan
 
-Joining two duckdb-backed frames pushes the whole thing down as a single SQL
-query — as long as both frames come from the **same** connection:
+Joining two duckdb-backed dataframes pushes the whole thing down as a single SQL
+query — as long as both dataframes come from the **same** connection:
 
 ```python
 import duckdb
@@ -284,8 +284,8 @@ shape: (3, 3)
 └─────┴───────┴────────┘
 ```
 
-Mixing a duckdb frame with an *in-memory* frame just works: the plan runs
-inside duckdb, which scans the in-memory frame's Arrow data in place — no
+Mixing a duckdb dataframe with an *in-memory* dataframe just works: the plan runs
+inside duckdb, which scans the in-memory dataframe's Arrow data in place — no
 copy, no staging step:
 
 ```python
@@ -306,7 +306,7 @@ shape: (2, 3)
 └─────┴───────┴───────┘
 ```
 
-And since 1.7.0, even frames from *different* connections — a second
+And since 1.7.0, even dataframes from *different* connections — a second
 duckdb file, a sqlite file, separate in-memory databases — join too. The
 foreign side is streamed through Arrow onto the plan's primary
 connection. That stream is a copy of that table's rows, so dpyr warns to

@@ -12,7 +12,7 @@ location and performance, never for behavior.
 ## The polars backend
 
 Anything that starts from in-process data or local files runs on polars:
-`read()` on a dict, a polars or pandas frame, or a `.parquet`/`.csv` path.
+`read()` on a dict, a polars or pandas dataframe, or a `.parquet`/`.csv` path.
 
 ```python
 import polars as pl
@@ -65,7 +65,7 @@ print(sales_pq.schema)
 
 A whole chain compiles to **one** polars `LazyFrame`, so polars' optimizer
 sees everything at once — filters get pushed into the parquet scan, unused
-columns are never decoded, and no intermediate frame is allocated between
+columns are never decoded, and no intermediate dataframe is allocated between
 verbs:
 
 ```python
@@ -158,9 +158,9 @@ print(final_sql(by_city.plan))
 SELECT *, row_number() OVER () AS "__rn1" FROM (SELECT "city", CAST(count(*) AS BIGINT) AS "trips", COALESCE(sum("km"), 0.0) AS "total_km" FROM (SELECT "city", "month", "km" FROM "deliveries") t GROUP BY "city") t ORDER BY "total_km" DESC NULLS LAST, "__rn1" ASC
 ```
 
-One duckdb-side effect *is* observable: `.persist()` checkpoints a frame as
-a `TEMP TABLE` on your connection (polars frames persist as in-memory
-frames instead). Since 1.2.0 this runs as a single
+One duckdb-side effect *is* observable: `.persist()` checkpoints a dataframe as
+a `TEMP TABLE` on your connection (polars dataframes persist as in-memory
+dataframes instead). Since 1.2.0 this runs as a single
 `CREATE TEMP TABLE ... AS <query>` *inside* the engine — the rows never
 pass through Python. Temp tables vanish when the connection closes:
 
@@ -179,7 +179,7 @@ print(con.execute(
 
 `collect()` pulls rows *out*; these verbs leave them *in*. `to_table()`
 materializes a chain as a real table (in-engine, no Python round trip) and
-returns a frame bound to it; `to_view()` saves the lazy plan itself as a
+returns a dataframe bound to it; `to_view()` saves the lazy plan itself as a
 named view — zero materialization, and any SQL client on that connection
 can query it; `write("x.parquet")` compiles to an in-engine `COPY ... TO`:
 
@@ -201,7 +201,7 @@ engine — the SQL for duckdb plans, the optimized plan for polars ones:
 print(top.show_query()[:80], "…")
 ```
 
-In-memory frames can land too — give `to_table()` a connection
+In-memory dataframes can land too — give `to_table()` a connection
 (`to_table("name", con=con)`), or skip connections entirely with
 `df.write(path, table)`, which creates the database file if needed.
 
@@ -226,7 +226,7 @@ Tab completion works on `db.` (table names come from the live catalog),
 and a misspelled table gets a did-you-mean, just like columns do. Arrow
 IPC files round-trip with `write("x.arrow")` / `read("x.arrow")` and are
 memory-mapped on read, so opening even a huge file is instant. For a
-fast structural look at any frame, `glimpse()` prints one line per column
+fast structural look at any dataframe, `glimpse()` prints one line per column
 with its dtype and leading values.
 
 ## ML data: Hugging Face datasets, numpy, tensors
@@ -263,7 +263,7 @@ library at all: the Hub serves them as parquet, and both engines scan
 data), with the usual column/predicate pushdown.
 
 Going the other way, `to_numpy()` / `to_torch()` / `to_jax()` collect a
-frame into the array world (the latter two need torch or jax installed),
+dataframe into the array world (the latter two need torch or jax installed),
 and `read()` accepts CPU torch tensors and jax arrays directly:
 
 ```text
@@ -291,7 +291,7 @@ print(type(by_city.to_pandas()))
 
 ## The result cache (and when to clear it)
 
-Results are cached keyed by plan hash, so re-displaying a frame in a notebook
+Results are cached keyed by plan hash, so re-displaying a dataframe in a notebook
 costs nothing. The flip side: a duckdb table mutated *outside* dpyr has the
 same plan hash, so cached results go stale. `dpyr.cache_clear()` drops the
 cache; `.persist()` is the explicit "snapshot now" alternative:
@@ -312,7 +312,7 @@ print(len(deliveries))                                      # recomputed
 
 File-backed sources are *not* exempt. `read()` on a file path tags the
 source with the file's path + mtime + size — but only once, at construction
-(`_file_token` in `frame.py`). A frame you are already holding keeps that
+(`_file_token` in `dataframe.py`). A dataframe you are already holding keeps that
 original tag, so editing the file on disk does not change its plan hash:
 it keeps returning the cached rows. `cache_clear()` doesn't rescue it
 either — the captured scan pinned the old file's metadata, and collecting
@@ -346,8 +346,8 @@ held frame: scan pinned the old file's metadata
 
 ## Opting out of eager display
 
-By default a frame's repr collects a preview (display-eager, DESIGN §3).
-`.lazy()` returns a frame that never executes implicitly — only `.collect()`
+By default a dataframe's repr collects a preview (display-eager, DESIGN §3).
+`.lazy()` returns a dataframe that never executes implicitly — only `.collect()`
 (or another explicit export) runs it. `.eager()` flips it back, and
 `dpyr.options.interactive = False` turns implicit execution off globally for
 production pipelines:
@@ -373,7 +373,7 @@ dpyr.options.interactive = True
 
 `pivot_wider`'s output columns come from data values, so its schema can't be
 known from metadata alone. On *either* backend, dpyr implicitly persists the
-input, then pivots with polars. It works the same on a duckdb frame — just
+input, then pivots with polars. It works the same on a duckdb dataframe — just
 know that this step runs in-process, not in the database:
 
 ```python
@@ -400,8 +400,8 @@ Duplicate keys warn and keep the first value (see SEMANTICS S26).
 
 ## Mixing engines: the bridge
 
-A plan that touches both an in-memory frame and a duckdb table runs inside
-duckdb — and the in-memory side travels for free. duckdb scans the frame's
+A plan that touches both an in-memory dataframe and a duckdb table runs inside
+duckdb — and the in-memory side travels for free. duckdb scans the dataframe's
 Arrow data in place (zero copy), so joining your RAM against a warehouse
 table is just a join (SEMANTICS S34):
 
@@ -513,7 +513,7 @@ one integer type (S5), counts are Int64 (S13), `int / int` gives Float64
   want to define in SQL (`read(con).sql(...)`), or pipelines where the heavy lifting
   should stay inside the database and only summaries come back.
 
-Since both return polars frames and obey the same semantics, switching is a
+Since both return polars dataframes and obey the same semantics, switching is a
 one-line change at the source constructor — the chain below it stays
 identical. The few places where engine behavior genuinely differs (and what
 dpyr does about each) are cataloged row by row in

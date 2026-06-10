@@ -48,7 +48,7 @@ A single `Dataset` (already one split) needs no second argument.
 
 ## Getting back out
 
-`collect()` gives a polars DataFrame, and a frame also exits directly
+`collect()` gives a polars DataFrame, and a dataframe also exits directly
 with `to_pandas()`, `to_numpy()`, `to_torch()`, and `to_jax()`. The
 [backends guide](../backends.md#ml-data-hugging-face-datasets-numpy-tensors)
 shows the ML round-trips in detail.
@@ -57,7 +57,7 @@ shows the ML round-trips in detail.
 
 - **`read() doesn't know what to do with <SomeType>`** — the object
   isn't one of the supported kinds; the error lists them. Convert to a
-  dict or pandas/polars frame first.
+  dict or pandas/polars dataframe first.
 - **`read(table=...) only applies to database sources and Hugging Face
   dataset splits`** — the second argument means nothing for a dict or a
   dataframe; drop it.

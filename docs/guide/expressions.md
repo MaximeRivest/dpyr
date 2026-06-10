@@ -2,13 +2,13 @@
 
 Everything you pass to a verb — `col.kg > 5`, `col.yield_kg.mean()`,
 `if_else(...)` — is an **expression**: a small immutable tree describing a
-computation. Nothing runs when you build one. The frame validates it against
+computation. Nothing runs when you build one. The dataframe validates it against
 its schema the moment a verb receives it (so mistakes surface instantly), and
-the work happens later, on polars or duckdb, when the frame materializes.
+the work happens later, on polars or duckdb, when the dataframe materializes.
 This page tours the expression toolkit and the three tiers of autocompletion
 built on it: `col`, `df.c`, and `dpyr stubgen`.
 
-## `col` describes, the frame executes
+## `col` describes, the dataframe executes
 
 `col.<name>` is a free-floating column reference — dpyr's counterpart of
 `pl.col("name")` — whose operators and methods keep growing the tree. Print
@@ -27,7 +27,7 @@ round((col.mass / pow((col.height / lit(100)), lit(2))), lit(1))
 
 That repr is canonical: dpyr hashes it to fingerprint plans and cache
 results. Plain Python values (`100`, `"kale"`, `date(...)`) become literals
-automatically, and the same `bmi` object works on any frame with `mass` and
+automatically, and the same `bmi` object works on any dataframe with `mass` and
 `height` columns, on either backend.
 
 ## `&`, `|`, `~` — not `and`, `or`, `not`
@@ -55,7 +55,7 @@ tighter, so `col.kg > 5 & col.organic` parses as `col.kg > (5 & col.organic)`.
 And use `.is_in([...])` where you'd reach for Python's `in`, which also
 routes through `bool()` and hits the same error.
 
-## A frame to play with
+## A dataframe to play with
 
 ```python
 from datetime import date
@@ -272,7 +272,7 @@ shape: (3, 4)
 Verbs validate every expression against the schema before returning — pure
 metadata work, so it's instant. A wrong column name raises with a
 did-you-mean suggestion, and dpyr strips its internals from the traceback:
-exactly two frames, your call plus one re-raise inside dpyr (paths below come
+exactly two stack frames, your call plus one re-raise inside dpyr (paths below come
 from running this guide as a script):
 
 ```python
@@ -301,7 +301,7 @@ on the offending verb call.
 ## `df.c`: the schema-bound, type-aware proxy
 
 `col` accepts any name and any method, deferring all checks to the verb. The
-frame-bound proxy `df.c` knows the live schema: in Jupyter or any REPL,
+dataframe-bound proxy `df.c` knows the live schema: in Jupyter or any REPL,
 `plants.c.<TAB>` completes real column names, and what comes back is a
 *typed* expression class:
 
@@ -339,8 +339,8 @@ ColumnNotFoundError: column 'famly' not found in df.c. Did you mean 'family'? Av
 ### Lambda verbs
 
 `filter`, `mutate`, and `summarize` accept callables and pass them `df.c`, so
-you get the typed proxy without naming the frame twice — handy mid-chain,
-where the intermediate frame has no variable name:
+you get the typed proxy without naming the dataframe twice — handy mid-chain,
+where the intermediate dataframe has no variable name:
 
 ```python
 print(plants.filter(lambda c: c.rows >= 5).pull(col.plant))

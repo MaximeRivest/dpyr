@@ -16,9 +16,9 @@ uv add dpyr
 
 ## A dataset to play with
 
-We'll build a frame from plain Python lists so this page is fully
+We'll build a dataframe from plain Python lists so this page is fully
 self-contained — but `read()` takes far more than dicts: parquet, CSV,
-JSON, Excel, duckdb and SQLite files, URLs, pandas frames, Hugging Face
+JSON, Excel, duckdb and SQLite files, URLs, pandas dataframes, Hugging Face
 datasets... the whole tour is in [Reading & writing](reading/index.md). Here's
 a season of harvest records from a small market garden — one row per
 crop picked from a bed:
@@ -59,13 +59,13 @@ shape: (9, 5)
 
 Two things to notice already:
 
-- **Evaluating a frame shows rows.** In a notebook or REPL, the repr runs the
+- **Evaluating a dataframe shows rows.** In a notebook or REPL, the repr runs the
   plan and prints a preview — no `.collect()` ceremony while you explore.
-  Under the hood frames stay lazy and results are cached by plan hash, so
+  Under the hood dataframes stay lazy and results are cached by plan hash, so
   re-displaying never recomputes.
 - **`col.kg` refers to a column.** `col` is a free-floating column proxy, the
   equivalent of bare column names in dplyr or `pl.col(...)` in polars. The
-  frame-bound flavor `harvest.c.kg` does the same job but autocompletes from
+  dataframe-bound flavor `harvest.c.kg` does the same job but autocompletes from
   the live schema in your editor.
 
 One kale row has `kg = None` — that becomes a missing value (`null`), which
@@ -73,7 +73,7 @@ several verbs below treat specially.
 
 ## Errors arrive immediately, with a suggestion
 
-Because every frame knows its schema eagerly, a typo'd column name fails on
+Because every dataframe knows its schema eagerly, a typo'd column name fails on
 the line that made it — not three cells later inside an engine traceback:
 
 ```python
@@ -230,7 +230,7 @@ a `null` revenue, not an error.
 `n()` counts rows per group; aggregates like `.sum()` and `.mean()` skip
 missing values by default (`na_rm=True`, matching the habit of dplyr users —
 SEMANTICS S2). Group keys come back sorted (S7), and `summarize` returns an
-ungrouped frame when one grouping level remains (S9):
+ungrouped dataframe when one grouping level remains (S9):
 
 ```python
 print(
@@ -283,7 +283,7 @@ shape: (3, 2)
 
 ## The same verbs on duckdb
 
-Point a frame at a duckdb table and the identical chain compiles to SQL with
+Point a dataframe at a duckdb table and the identical chain compiles to SQL with
 full pushdown — same verbs, same results (that agreement is enforced by
 differential tests against dplyr itself):
 
@@ -326,7 +326,7 @@ When you're done exploring, `.collect()` returns a polars `DataFrame`
 (`.to_pandas()` for pandas), and `.lazy()` / `options.interactive = False`
 turn off implicit execution for production pipelines. Collecting isn't the
 only way out, though: `df.write("results.parquet")`, `to_table()`, and friends land
-results straight from the engine, and you can even mix in-memory frames with
+results straight from the engine, and you can even mix in-memory dataframes with
 duckdb tables in one plan — see [Backends](backends.md) for the details.
 
 ## glimpse — the quick look
@@ -349,7 +349,7 @@ $ price_per_kg     <Float64> 5.5, 5.5, 3.0, 3.0, 8.0, 8.0, 12.0, 12.0, 4.25
 $ days_to_maturity <Int64> 78, 81, 52, 55, 60, 62, 240, 240, 70
 ```
 
-It returns the frame, so it slots into the middle of a chain while you
+It returns the dataframe, so it slots into the middle of a chain while you
 debug.
 
 ## Where next

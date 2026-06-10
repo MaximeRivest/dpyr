@@ -41,7 +41,7 @@ summary.write("forest.db")
 ```
 
 The file is created if it doesn't exist, so
-`frame.write("new.db", "results")` is all it takes to start a database.
+`dataframe.write("new.db", "results")` is all it takes to start a database.
 
 ## SQLite files (`.sqlite`, `.sqlite3`)
 
@@ -89,7 +89,7 @@ results inside an engine with `to_table()` and `to_view()`.
   database (writing does). Check the path.
 - **Unknown table name** — `print(read("file.db"))` lists what's
   actually in there; names are case-sensitive.
-- **Joining tables from two different database files** — frames from
+- **Joining tables from two different database files** — dataframes from
   different connections can't meet in one query; read both tables from
   the same file/connection, or see [Joins](../joins.md) for how dpyr
   bridges across.

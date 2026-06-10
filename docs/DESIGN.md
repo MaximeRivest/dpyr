@@ -49,7 +49,7 @@ Helpers as plain functions: `n()`, `desc()`, `if_else()`, `case_when()`,
 
 Three tiers, weakest to strongest:
 
-1. **Runtime**: `DFrame.__dir__` and the frame-bound `df.c` proxy
+1. **Runtime**: `DFrame.__dir__` and the dataframe-bound `df.c` proxy
    populated from the live schema → Jupyter/REPL completion for free.
 2. **Generic typing**: `DFrame[S]` parameterized by a `Cols` schema class;
    `filter(lambda c: c.height > 180)` completes via the lambda's inferred
@@ -85,7 +85,7 @@ the schema. Immediate results need collection only at display points.
 
 - **Repeated re-execution**: cache results on first materialization, keyed
   by plan hash. Plus an explicit `.persist()` checkpoint verb
-  (polars: collected frame; duckdb: `CREATE TEMP TABLE`).
+  (polars: collected dataframe; duckdb: `CREATE TEMP TABLE`).
 - **Source mutation between displays**: `persist()` is the snapshot
   operator; documented honestly.
 - **Schema-needs-data ops** (`pivot_wider` — output columns come from
@@ -116,7 +116,7 @@ logical plan + expression IR  ←— schema inference/validation lives here
   from_pandas` → polars; `from_duckdb(con, "tbl")` / `read_sql` → duckdb),
   but the engine is picked automatically at collect time: if any duckdb
   table participates in the plan, the whole plan runs inside duckdb,
-  scanning in-memory frames via arrow in place (zero copy); otherwise
+  scanning in-memory dataframes via arrow in place (zero copy); otherwise
   polars runs it. `collect(engine=...)` overrides. Two *different* duckdb
   connections in one plan still raise.
 - `group_by` returns `GroupedDFrame` (separate type → separate completion
@@ -134,8 +134,8 @@ module that never touches the dispatchers or other formats.
 ## 5. Non-goals (MVP)
 
 - No pandas execution backend (only conversion in/out).
-- No R-style NSE magic via frame inspection / AST tricks.
-- No plotting, no modeling. Frames out are polars/pandas; the ecosystem
+- No R-style NSE magic via stack-frame inspection / AST tricks.
+- No plotting, no modeling. Dataframes out are polars/pandas; the ecosystem
   does the rest.
 - No distributed execution.
 

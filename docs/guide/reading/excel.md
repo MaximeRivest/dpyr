@@ -1,7 +1,7 @@
 # Excel & Google Sheets
 
 Spreadsheets are where a lot of science lives. dpyr treats an `.xlsx`
-workbook like a small database: one sheet reads as a frame, several
+workbook like a small database: one sheet reads as a dataframe, several
 sheets open as a catalog, and writing adds or replaces one sheet at a
 time without destroying the rest. Google Sheets work the same way —
 paste the browser URL into `read()`.
@@ -22,7 +22,7 @@ DpyrError: reading .xlsx needs the excel extra: pip install 'dpyr[excel]'
 
 ## Reading
 
-A workbook with **one** sheet behaves like a CSV — you get the frame:
+A workbook with **one** sheet behaves like a CSV — you get the dataframe:
 
 ```python
 from dpyr import read, col

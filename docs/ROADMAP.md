@@ -78,7 +78,7 @@ the output because it's differentially tested against dplyr.
   filter/mutate window semantics.
 
 ## Epic 7 — Autocompletion & developer experience ✅
-- **7.1** Runtime completion: `__dir__` from live schema; frame-bound
+- **7.1** Runtime completion: `__dir__` from live schema; dataframe-bound
   `df.c` proxy.
 - **7.2** `DFrame[S]` generic typing + lambda-style `filter(lambda c: ...)`.
 - **7.3** `dpyr stubgen` CLI: parquet/duckdb schema → `Cols` stubs;
@@ -105,7 +105,7 @@ fuzz-tested. Fixed a synthesized-SQL name-collision bug that caused rare
 nondeterministic slice results on duckdb (S3).
 
 ## 1.2.0 ✅ (published 2026-06-10)
-The engine disappears: in-memory frames bridge into duckdb automatically
+The engine disappears: in-memory dataframes bridge into duckdb automatically
 (arrow scanned in place, zero-copy) so mixing is no longer an error;
 collect(engine=) override; persist()/to_table()/to_view() materialize
 fully in-engine (CREATE ... AS <sql>); write_parquet via in-engine COPY;
@@ -120,7 +120,7 @@ duckdb files open as a catalog, write to a named table). write_csv added
 escape hatches.
 
 ## 1.4.0 ✅ (published 2026-06-10)
-read() is the universal ingest: dicts, polars/pandas frames, arrow
+read() is the universal ingest: dicts, polars/pandas dataframes, arrow
 tables, and live duckdb connections, alongside paths. Docs simplified to
 teach exactly read()/write(); format-specific functions undocumented but
 kept as escape hatches; stubgen emits read(); internals pages dropped
