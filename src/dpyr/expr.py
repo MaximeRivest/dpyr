@@ -162,6 +162,67 @@ class Lit(Expr):
         return f"lit({self.value!r})"
 
 
+def _block_methods(*names: str):
+    """Class decorator: replace inherited methods with build-time errors.
+
+    Typed columns fail on the line that calls an inapplicable method, even
+    before any schema is consulted — the strongest form of schema-eager.
+    """
+    def deco(cls: type) -> type:
+        for nm in names:
+            if nm in cls.__dict__:  # the class's own override wins
+                continue
+            def bad(self: Expr, *a: object, _nm: str = nm,
+                    _cls: str = cls.__name__, **k: object) -> Expr:
+                raise ExprTypeError(f".{_nm}() is not available on a {_cls}")
+            setattr(cls, nm, bad)
+        return cls
+    return deco
+
+
+_STR_METHODS = ("str_detect", "str_replace", "str_to_lower", "str_to_upper", "str_len")
+_NUM_METHODS = ("mean", "median", "sum", "std", "var", "abs", "round", "floor",
+                "ceiling", "log", "exp", "sqrt")
+_DT_METHODS = ("year", "month", "day")
+
+
+@_block_methods(*_STR_METHODS, *_DT_METHODS)
+class NumExpr(Col):
+    """A column statically known to be numeric (ROADMAP 1.2 / 7.x)."""
+
+
+@_block_methods(*_NUM_METHODS, *_DT_METHODS)
+class StrExpr(Col):
+    """A column statically known to be a string."""
+
+
+@_block_methods(*_STR_METHODS, *_NUM_METHODS, *_DT_METHODS)
+class BoolExpr(Col):
+    """A column statically known to be boolean."""
+
+    def sum(self, na_rm: bool = True) -> Agg:  # count of trues, like R
+        return Agg("sum", self, na_rm)
+
+
+@_block_methods(*_STR_METHODS, *_NUM_METHODS)
+class TemporalExpr(Col):
+    """A column statically known to be a date/datetime."""
+
+
+def typed_col(name: str, dtype: DType) -> Col:
+    """Schema-aware Col factory: the frame-bound proxy (df.c, Epic 7) and
+    stubgen build on this to give type-correct completion surfaces."""
+    if dt.is_numeric(dtype):
+        return NumExpr(name)
+    if dtype == dt.STR:
+        return StrExpr(name)
+    if dtype == dt.BOOL:
+        return BoolExpr(name)
+    if dtype in dt.TEMPORAL:
+        return TemporalExpr(name)
+    return Col(name)
+
+
 @dataclass(frozen=True, eq=False)
 class BinOp(Expr):
     op: str

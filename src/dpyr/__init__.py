@@ -14,7 +14,21 @@ from .errors import (
     ExprTypeError,
     GroupError,
 )
-from .expr import Expr, case_when, col, desc, if_else, infer_dtype, lit, n
+from .expr import (
+    BoolExpr,
+    Expr,
+    NumExpr,
+    StrExpr,
+    TemporalExpr,
+    case_when,
+    col,
+    desc,
+    if_else,
+    infer_dtype,
+    lit,
+    n,
+    typed_col,
+)
 from .frame import DFrame, GroupedDFrame, from_schema
 from .plan import plan_hash
 
@@ -25,6 +39,7 @@ __all__ = [
     "DFrame", "GroupedDFrame", "from_schema",
     "DType", "INT64", "FLOAT64", "BOOL", "STR", "DATE", "DATETIME", "NULL",
     "dtypes", "Expr", "infer_dtype", "plan_hash",
+    "typed_col", "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr",
     "DpyrError", "ColumnNotFoundError", "ExprTypeError",
     "DuplicateColumnError", "GroupError",
 ]

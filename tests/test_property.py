@@ -29,7 +29,7 @@ def _numeric_cols(df):
 def chains(draw):
     """A random well-typed verb chain over a random schema."""
     df = draw(frames())
-    for _ in range(draw(st.integers(0, 5))):
+    for step in range(draw(st.integers(0, 5))):
         choices = ["filter_n", "mutate", "select", "arrange", "distinct",
                    "slice", "summarize"]
         verb = draw(st.sampled_from(choices))
@@ -39,7 +39,7 @@ def chains(draw):
             df = df.filter(col[c] > draw(st.integers(-5, 5)))
         elif verb == "mutate" and nums:
             c = draw(st.sampled_from(nums))
-            df = df.mutate(**{f"m{len(df.columns)}": col[c] * 2})
+            df = df.mutate(**{f"mut{step}": col[c] * 2})
         elif verb == "select":
             keep = draw(st.lists(st.sampled_from(df.columns), min_size=1,
                                  max_size=len(df.columns), unique=True))
@@ -53,10 +53,9 @@ def chains(draw):
             df = df.slice_head(draw(st.integers(0, 10)))
         elif verb == "summarize":
             key = draw(st.sampled_from(df.columns))
-            tag = len(df.columns)  # avoid collisions with prior summarize output
-            aggs = {f"n{tag}": n()}
+            aggs = {f"cnt{step}": n()}  # step-unique: never collides with keys
             if nums and (c := draw(st.sampled_from(df.columns))) in nums and c != key:
-                aggs[f"m{tag}"] = col[c].mean()
+                aggs[f"avg{step}"] = col[c].mean()
             df = df.group_by(col[key]).summarize(**aggs)
     return df
 

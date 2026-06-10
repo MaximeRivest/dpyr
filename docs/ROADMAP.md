@@ -13,21 +13,21 @@ the output because it's differentially tested against dplyr.
 ## Epic 0 — Project foundation
 - **0.1** Repo scaffold: uv project, `pyproject.toml`, ruff, mypy/pyright,
   pytest, pre-commit, GitHub Actions skeleton. ✅ (this commit)
-- **0.2** Reserve `dpyr` on PyPI with a 0.0.1 placeholder that
+- **0.2** ✅ Reserve `dpyr` on PyPI with a 0.0.1 placeholder that
   errors helpfully on import-and-use. (`dataframe` is PyPI policy-blocked;
   see DESIGN.md §6 for the naming history.)
 - **0.3** Commit intent docs (DESIGN/SEMANTICS/TESTING/ROADMAP). ✅
 
-## Epic 1 — Expression IR & schema engine (the core)
-- **1.1** Dtype system: Int64/Float64/Bool/Str/Date/Datetime/Null + NA
+## Epic 1 — Expression IR & schema engine (the core) ✅
+- **1.1** ✅ Dtype system: Int64/Float64/Bool/Str/Date/Datetime/Null + NA
   model (SEMANTICS S1).
-- **1.2** Expression nodes: column refs, literals, arithmetic/comparison/
+- **1.2** ✅ Expression nodes: column refs, literals, arithmetic/comparison/
   boolean ops, function calls; typed expr classes (NumExpr, StrExpr, ...).
-- **1.3** `col` proxy producing typed expressions; `desc()`, `n()`,
+- **1.3** ✅ `col` proxy producing typed expressions; `desc()`, `n()`,
   `if_else()`, `case_when()`.
-- **1.4** Logical plan nodes for every MVP verb; **schema inference +
+- **1.4** ✅ Logical plan nodes for every MVP verb; **schema inference +
   validation per node** with did-you-mean errors and one-frame tracebacks.
-- **1.5** Plan hashing (for the materialization cache) and stable repr
+- **1.5** ✅ Plan hashing (for the materialization cache) and stable repr
   (for IR snapshot tests).
 - Tests: unit + Hypothesis property 1 (schema soundness).
 
