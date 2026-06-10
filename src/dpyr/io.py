@@ -124,7 +124,9 @@ def read(source: Any, table: str | None = None) -> DFrame | Database:
     import duckdb
 
     from .frame import from_dict, from_polars
-    if isinstance(source, dict):
+    type_name = f"{type(source).__module__}.{type(source).__name__}"
+    if isinstance(source, dict) and not type_name.startswith("datasets."):
+        # Hugging Face DatasetDict subclasses dict — handled further down
         if table is not None:
             raise DpyrError("read(table=...) only applies to duckdb sources")
         return from_dict(source)
@@ -132,22 +134,47 @@ def read(source: Any, table: str | None = None) -> DFrame | Database:
         db = Database(source, "connection")
         return db.table(table) if table is not None else db
     if not isinstance(source, str):
-        if table is not None:
-            raise DpyrError("read(table=...) only applies to duckdb sources")
         import polars as pl
+        if type_name.startswith("datasets.") and "Dict" in type(source).__name__:
+            # a DatasetDict: pick a split via the second argument
+            splits = list(source.keys())
+            if table is None:
+                raise DpyrError(
+                    f"this Hugging Face dataset has splits {splits}; pick "
+                    f"one: read(ds, {splits[0]!r})")
+            if table not in splits:
+                from .errors import ColumnNotFoundError
+                raise ColumnNotFoundError(table, splits, "dataset splits")
+            return read(source[table])
+        if table is not None:
+            raise DpyrError("read(table=...) only applies to duckdb sources "
+                            "and Hugging Face dataset splits")
         if isinstance(source, (pl.DataFrame, pl.LazyFrame)):
             return from_polars(source)
-        type_name = f"{type(source).__module__}.{type(source).__name__}"
         if type_name.startswith("pandas."):
             return from_polars(pl.from_pandas(source))
         if type_name.startswith("pyarrow."):
             out = pl.from_arrow(source)
             assert isinstance(out, pl.DataFrame)
             return from_polars(out)
+        if type_name.startswith("datasets."):
+            # Hugging Face Dataset: arrow-backed, ingested zero-copy
+            arrow = source.data
+            arrow = getattr(arrow, "table", arrow)  # unwrap datasets.table.Table
+            out = pl.from_arrow(arrow)
+            assert isinstance(out, pl.DataFrame)
+            return from_polars(out)
+        if type_name.startswith("numpy."):
+            return _read_array(source)
+        if type_name.startswith("torch."):
+            return _read_array(source.detach().cpu().numpy())
+        if type_name.startswith(("jaxlib.", "jax.")):
+            import numpy as np
+            return _read_array(np.asarray(source))
         raise DpyrError(
             f"read() doesn't know what to do with {type_name}; give it a "
-            "path, dict, polars/pandas frame, arrow table, or duckdb "
-            "connection")
+            "path, dict, polars/pandas frame, arrow table, numpy array, "
+            "torch/jax tensor, Hugging Face dataset, or duckdb connection")
     import pathlib
     suffix = pathlib.PurePath(source).suffix.lower()
     if suffix in _DB_SUFFIXES:
@@ -166,6 +193,22 @@ def read(source: Any, table: str | None = None) -> DFrame | Database:
         f"read() can't infer a format from {source!r} (suffix {suffix!r}); "
         "supported: .parquet/.pq, .csv, .arrow/.feather/.ipc, "
         ".db/.duckdb/.ddb")
+
+
+def _read_array(arr: Any) -> DFrame:
+    """A 1-D array becomes one column ('value'); a 2-D array becomes
+    columns column_0..column_n (rows stay rows)."""
+    import polars as pl
+
+    from .frame import from_polars
+    if arr.ndim == 1:
+        return from_polars(pl.DataFrame({"value": arr}))
+    if arr.ndim == 2:
+        data = {f"column_{i}": arr[:, i] for i in range(arr.shape[1])}
+        return from_polars(pl.DataFrame(data))
+    raise DpyrError(
+        f"read() takes 1-D or 2-D arrays, got {arr.ndim}-D shape "
+        f"{tuple(arr.shape)}")
 
 
 def read_ipc(path: str) -> DFrame:

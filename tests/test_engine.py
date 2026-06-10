@@ -259,3 +259,48 @@ def test_read_is_the_universal_ingest():
         d.read(data, "t")
     with pytest.raises(d.DpyrError, match="doesn't know what to do"):
         d.read(42)
+
+
+# -- array / tensor / dataset interop --------------------------------------------
+
+def test_read_numpy_arrays():
+    import numpy as np
+    one_d = d.read(np.array([1.5, 2.5, 3.5]))
+    assert one_d.columns == ["value"] and one_d.collect().height == 3
+    two_d = d.read(np.array([[1, 2], [3, 4], [5, 6]]))
+    assert two_d.columns == ["column_0", "column_1"]
+    assert two_d.collect()["column_1"].to_list() == [2, 4, 6]
+    with pytest.raises(d.DpyrError, match="1-D or 2-D"):
+        d.read(np.zeros((2, 2, 2)))
+    # numpy arrays as dict values also work
+    assert d.read({"x": np.array([1, 2])}).collect().height == 2
+
+
+def test_read_huggingface_dataset():
+    datasets = pytest.importorskip("datasets")
+    ds = datasets.Dataset.from_dict({"text": ["hi", "yo"], "label": [0, 1]})
+    f = d.read(ds)
+    assert f.columns == ["text", "label"]
+    out = f.filter(col.label == 1).collect()
+    assert out["text"].to_list() == ["yo"]
+    dd = datasets.DatasetDict({"train": ds, "test": ds})
+    with pytest.raises(d.DpyrError, match="splits \\['train', 'test'\\]"):
+        d.read(dd)
+    assert d.read(dd, "train").collect().height == 2
+    with pytest.raises(d.ColumnNotFoundError, match="Did you mean 'train'"):
+        d.read(dd, "trian")
+
+
+def test_to_numpy_roundtrip():
+    f = d.read({"a": [1.0, 2.0], "b": [3.0, 4.0]})
+    arr = f.to_numpy()
+    assert arr.shape == (2, 2) and arr[1, 1] == 4.0
+    back = d.read(arr)
+    assert back.collect().to_dicts()[0] == {"column_0": 1.0, "column_1": 3.0}
+
+
+def test_read_torch_and_jax_if_available():
+    torch = pytest.importorskip("torch")
+    t = d.read(torch.tensor([[1.0, 2.0], [3.0, 4.0]]))
+    assert t.collect()["column_0"].to_list() == [1.0, 3.0]
+    assert d.read({"x": [1.0]}).to_torch().shape == (1, 1)

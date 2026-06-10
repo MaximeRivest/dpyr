@@ -173,6 +173,18 @@ class DFrame(Generic[S]):
                 "to_pandas() needs pandas: pip install 'dpyr[pandas]'") from err
         return self.collect().to_pandas()
 
+    def to_numpy(self) -> Any:
+        """Collect into a 2-D numpy array (column order preserved)."""
+        return self.collect().to_numpy()
+
+    def to_torch(self) -> Any:
+        """Collect into a torch tensor (needs torch installed)."""
+        return self.collect().to_torch()
+
+    def to_jax(self) -> Any:
+        """Collect into a jax array (needs jax installed)."""
+        return self.collect().to_jax()
+
     def pull(self, column: ColRef | None = None) -> list[Any]:
         name = _name(column, "pull()") if column is not None else self.columns[-1]
         if name not in self._plan.schema:

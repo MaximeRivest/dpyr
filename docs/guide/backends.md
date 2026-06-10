@@ -229,6 +229,50 @@ memory-mapped on read, so opening even a huge file is instant. For a
 fast structural look at any frame, `glimpse()` prints one line per column
 with its dtype and leading values.
 
+## ML data: Hugging Face datasets, numpy, tensors
+
+`read()` also ingests the machine-learning world. Hugging Face `datasets`
+objects are Arrow tables under the hood — the same format dpyr lives on —
+so they come in without conversion. A `DatasetDict` asks you to pick a
+split (with a did-you-mean if you typo it). Bare numpy arrays become
+columns; a 1-D array becomes a single `value` column:
+
+```python
+import numpy as np
+import datasets
+
+embeddings = read(np.array([[0.1, 0.9], [0.4, 0.6], [0.8, 0.2]]))
+print(embeddings.columns)
+
+ds = datasets.Dataset.from_dict({
+    "text":  ["great movie", "terrible plot", "fine I guess"],
+    "label": [1, 0, 1],
+})
+reviews = read(ds)
+print(reviews.filter(col.label == 1).collect()["text"].to_list())
+```
+
+```text
+['column_0', 'column_1']
+['great movie', 'fine I guess']
+```
+
+For datasets published on the Hub you often don't need the `datasets`
+library at all: the Hub serves them as parquet, and both engines scan
+`hf://datasets/...` parquet paths directly (set `HF_TOKEN` for gated
+data), with the usual column/predicate pushdown.
+
+Going the other way, `to_numpy()` / `to_torch()` / `to_jax()` collect a
+frame into the array world (the latter two need torch or jax installed),
+and `read()` accepts CPU torch tensors and jax arrays directly:
+
+```text
+features = (reviews
+            .mutate(length = col.text.str_len())
+            .select(col.label, col.length)
+            .to_torch())          # torch.Tensor, shape (3, 2)
+```
+
 ## Both backends hand you polars
 
 `collect()` returns a `polars.DataFrame` regardless of engine — polars is the

@@ -126,6 +126,13 @@ teach exactly read()/write(); format-specific functions undocumented but
 kept as escape hatches; stubgen emits read(); internals pages dropped
 from the site nav.
 
+## 1.5.0 ✅ (published 2026-06-10)
+read() ingests the ML world: Hugging Face Datasets (arrow-backed, no
+conversion) and DatasetDicts (split via second argument, did-you-mean on
+typos), numpy 1-D/2-D arrays, CPU torch tensors and jax arrays.
+to_numpy()/to_torch()/to_jax() exits. hf:// parquet paths scan directly
+through both engines.
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres
