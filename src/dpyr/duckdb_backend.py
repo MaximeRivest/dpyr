@@ -41,7 +41,9 @@ from .expr import (
     Lit,
     N,
     UnaryOp,
+    Window,
     contains_agg,
+    contains_window,
 )
 
 if TYPE_CHECKING:
@@ -102,18 +104,23 @@ def sql_lit(value: Any) -> str:
     raise DpyrError(f"unsupported literal for SQL: {value!r}")
 
 
-_cte_counter = itertools.count()
+_uniq_counter = itertools.count()
+
+
+def _uniq(prefix: str) -> str:
+    """Unique synthesized identifier. EVERY internal column/CTE name must
+    come from here: a fixed name can collide with a counter-generated one
+    in the same SELECT scope, and duckdb then binds ambiguously (this was a
+    silently-wrong-results bug, not a hypothetical)."""
+    return f"__{prefix}{next(_uniq_counter)}"
 
 
 def _cte_name() -> str:
-    return f"__dpyr_w{next(_cte_counter)}"
-
-
-_rn_counter = itertools.count()
+    return f"__dpyr_w{next(_uniq_counter)}"
 
 
 def _rn_name() -> str:
-    return f"__rn{next(_rn_counter)}"
+    return f"__rn{next(_uniq_counter)}"
 
 
 def _order_hidden_col(order: str | None) -> str | None:
@@ -132,6 +139,7 @@ class _Ctx:
     in_agg: bool = False          # inside summarize aggregation list
     windowed: bool = False        # aggregates broadcast via OVER (...)
     order: str | None = None      # pending arrange order (for first/last)
+    row_order: str | None = None  # ORDER BY for row-order window functions
 
 
 def compile_expr(e: Expr, ctx: _Ctx) -> str:
@@ -176,9 +184,66 @@ def compile_expr(e: Expr, ctx: _Ctx) -> str:
             f"WHEN {compile_expr(c, ctx)} THEN {compile_expr(v, ctx)}"
             for c, v in e.cases)
         return f"CASE {whens} ELSE {compile_expr(e.default, ctx)} END"
+    if isinstance(e, Window):
+        return _compile_window(e, ctx)
     if isinstance(e, Func):
         return _compile_func(e, ctx)
     raise AssertionError(f"unhandled expression node {type(e).__name__}")
+
+
+def _win_over(ctx: _Ctx, order: str, frame: str = "") -> str:
+    parts = []
+    if ctx.window:
+        parts.append("PARTITION BY " + ", ".join(q(k) for k in ctx.window))
+    parts.append(f"ORDER BY {order}")
+    if frame:
+        parts.append(frame)
+    return f" OVER ({' '.join(parts)})"
+
+
+def _compile_window(e: Window, ctx: _Ctx) -> str:
+    assert ctx.row_order is not None, "window function outside mutate/filter"
+    row = ctx.row_order
+    if e.name == "row_number":
+        return f"CAST(row_number(){_win_over(ctx, row)} AS BIGINT)"
+    assert e.operand is not None
+    x = compile_expr(e.operand, ctx)
+    if e.name in ("lag", "lead"):
+        default = compile_expr(e.default, ctx)
+        return f"{e.name}({x}, {e.n}, {default}){_win_over(ctx, row)}"
+    if e.name in ("min_rank", "dense_rank", "percent_rank"):
+        direction = "DESC" if e.descending else "ASC"
+        by = f"{x} {direction} NULLS LAST"
+        fn = "rank" if e.name in ("min_rank", "percent_rank") else "dense_rank"
+        ranked = f"{fn}(){_win_over(ctx, by)}"
+        if e.name == "percent_rank":
+            # dplyr: (min_rank - 1) / (non-missing count - 1); SQL
+            # percent_rank counts NULL rows, so build it by hand
+            part = ("PARTITION BY " + ", ".join(q(k) for k in ctx.window)
+                    if ctx.window else "")
+            cnt = f"count({x}) OVER ({part})"
+            return (f"CASE WHEN {x} IS NULL THEN NULL ELSE "
+                    f"(CAST({ranked} AS DOUBLE) - 1) / "
+                    f"(CAST({cnt} AS DOUBLE) - 1) END")
+        return (f"CASE WHEN {x} IS NULL THEN NULL ELSE "
+                f"CAST({ranked} AS BIGINT) END")
+    frame = "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+    # polars semantics: the cumulative value AT a null row is null (the
+    # running total continues afterwards); SQL windows skip nulls, so shim
+    if e.name == "cum_sum":
+        from .expr import infer_dtype
+        in_dt = infer_dtype(e.operand, ctx.schema)
+        if in_dt == dt.BOOL:
+            x = f"CASE WHEN {x} THEN 1 WHEN {x} IS NULL THEN NULL ELSE 0 END"
+        body = f"sum({x}){_win_over(ctx, row, frame)}"
+        out_dt = dt.INT64 if in_dt in (dt.INT64, dt.BOOL) else dt.FLOAT64
+        return (f"CASE WHEN {x} IS NULL THEN NULL ELSE "
+                f"CAST({body} AS {SQL_DTYPE[out_dt]}) END")
+    if e.name in ("cum_min", "cum_max"):
+        fn = e.name[4:]
+        return (f"CASE WHEN {x} IS NULL THEN NULL ELSE "
+                f"{fn}({x}){_win_over(ctx, row, frame)} END")
+    raise AssertionError(e.name)
 
 
 def _over(ctx: _Ctx, ordered: bool = False) -> str:
@@ -245,6 +310,8 @@ def _compile_func(e: Func, ctx: _Ctx) -> str:
     x = args[0]
     name = e.name
     from .expr import infer_dtype
+    if name == "coalesce" or name == "replace_na":
+        return f"COALESCE({', '.join(args)})"
     if name == "is_na":
         if infer_dtype(e.args[0], ctx.schema) == dt.FLOAT64:
             return f"({x} IS NULL OR isnan({x}))"
@@ -299,35 +366,63 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
 
     if isinstance(node, p.Filter):
         c = compile_plan(node.child)
+        needs_window = any(contains_window(pr) for pr in node.predicates)
+        base, row_order = c.sql, c.order
+        synthesized = needs_window and row_order is None
+        if synthesized:
+            # synthesize a stable input-order column for row-order windows
+            ord_col = _rn_name()
+            cte0 = _cte_name()
+            base = (f"WITH {q(cte0)} AS MATERIALIZED ({base}) "
+                    f"SELECT *, row_number() OVER () AS {q(ord_col)} "
+                    f"FROM {q(cte0)}")
+            row_order = f"{q(ord_col)} ASC"
         ctx = _Ctx(node.child.schema, node.child.groups, windowed=True,
-                   order=c.order)
-        if any(contains_agg(pr) for pr in node.predicates):
+                   order=c.order, row_order=row_order)
+        if needs_window or any(contains_agg(pr) for pr in node.predicates):
             # window functions can't appear in WHERE: project, then filter.
             # MATERIALIZED CTE works around duckdb's window-over-window bug
             # (unordered_map::at in 1.5.x).
             preds = [compile_expr(pr, ctx) for pr in node.predicates]
-            flags = ", ".join(f"{s} AS {q(f'__pred{i}')}" for i, s in enumerate(preds))
+            flag_names = [_uniq("pred") for _ in preds]
+            flags = ", ".join(f"{s} AS {q(fn)}" for s, fn in zip(preds, flag_names))
             cte = _cte_name()
-            inner = (f"WITH {q(cte)} AS MATERIALIZED ({c.sql}) "
+            inner = (f"WITH {q(cte)} AS MATERIALIZED ({base}) "
                      f"SELECT *, {flags} FROM {q(cte)}")
-            conds = " AND ".join(q(f"__pred{i}") for i in range(len(preds)))
+            conds = " AND ".join(q(fn) for fn in flag_names)
+            out_order = c.order if c.order else (row_order if synthesized else None)
             return _Compiled(
                 f"SELECT {_cols(node.schema)} FROM ({inner}) t WHERE {conds}",
-                c.order)
+                out_order)
         conds = " AND ".join(compile_expr(pr, ctx) for pr in node.predicates)
-        return _Compiled(f"SELECT * FROM ({c.sql}) t WHERE {conds}", c.order)
+        return _Compiled(f"SELECT * FROM ({base}) t WHERE {conds}", c.order)
 
     if isinstance(node, p.Mutate):
         c = compile_plan(node.child)
         sql = c.sql
         schema = dict(node.child.schema)
         from .expr import infer_dtype
+        row_order = c.order
+        synthesized = False
+        if row_order is None and any(contains_window(e) for _, e in node.exprs):
+            synthesized = True
+            ord_col = _rn_name()
+            cte0 = _cte_name()
+            sql = (f"WITH {q(cte0)} AS MATERIALIZED ({sql}) "
+                   f"SELECT *, row_number() OVER () AS {q(ord_col)} "
+                   f"FROM {q(cte0)}")
+            row_order = f"{q(ord_col)} ASC"
         for name, e in node.exprs:
-            ctx = _Ctx(schema, node.child.groups, windowed=True, order=c.order)
+            ctx = _Ctx(schema, node.child.groups, windowed=True, order=c.order,
+                       row_order=row_order)
             compiled = compile_expr(e, ctx)
             # explicit projection: duckdb's binder rejects windows in
             # `* REPLACE (...)`, so spell the select list out
-            carry = [hidden] if (hidden := _order_hidden_col(c.order)) else []
+            carry = []
+            if (hidden := _order_hidden_col(c.order)):
+                carry.append(hidden)
+            if (hidden2 := _order_hidden_col(row_order)) and hidden2 not in carry:
+                carry.append(hidden2)
             if name in schema:
                 items = ", ".join(
                     f"{compiled} AS {q(name)}" if k == name else q(k)
@@ -335,7 +430,7 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             else:
                 items = ", ".join([*(q(k) for k in [*schema, *carry]),
                                    f"{compiled} AS {q(name)}"])
-            if contains_agg(e):
+            if contains_agg(e) or contains_window(e):
                 # duckdb 1.5.x binder bug: a window over a subquery whose
                 # FROM contains a CTE fails. The working shape is a
                 # MATERIALIZED CTE at the head of the window's own SELECT.
@@ -345,7 +440,8 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             else:
                 sql = f"SELECT {items} FROM ({sql}) t"
             schema[name] = infer_dtype(e, schema)
-        return _Compiled(sql, c.order)
+        out_order = c.order if c.order else (row_order if synthesized else None)
+        return _Compiled(sql, out_order)
 
     if isinstance(node, p.Select):
         c = compile_plan(node.child)
@@ -384,9 +480,10 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         c = compile_plan(node.child)
         # dplyr distinct keeps the FIRST occurrence in input order
         cols = _cols(node.schema)
-        inner = f"SELECT *, row_number() OVER () AS {q('__rn')} FROM ({c.sql}) t"
+        drn = _uniq("drn")
+        inner = f"SELECT *, row_number() OVER () AS {q(drn)} FROM ({c.sql}) t"
         sql = (f"SELECT {cols} FROM ({inner}) t "
-               f"GROUP BY {cols} ORDER BY min({q('__rn')})")
+               f"GROUP BY {cols} ORDER BY min({q(drn)})")
         return _Compiled(f"SELECT {cols} FROM ({sql}) t", None)
 
     if isinstance(node, p.Slice):
@@ -399,20 +496,49 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             if groups:
                 raise DpyrError("slice_sample() on grouped frames is not supported yet")
             seed = node.seed if node.seed is not None else 0
+            h = _uniq("h")
             sql = (f"SELECT {_cols(node.schema)} FROM "
-                   f"(SELECT *, hash(row_number() OVER () + {seed}) AS {q('__h')} "
-                   f"FROM ({base}) t) t ORDER BY {q('__h')} LIMIT {node.n}")
+                   f"(SELECT *, hash(row_number() OVER () + {seed}) AS {q(h)} "
+                   f"FROM ({base}) t) t ORDER BY {q(h)} LIMIT {node.n}")
             return _Compiled(f"SELECT {_cols(node.schema)} FROM ({sql}) t", None)
         part = f"PARTITION BY {', '.join(q(g) for g in groups)}" if groups else ""
         rn_over = f"{part} ORDER BY {c.order}".strip() if c.order else part
-        inner = (f"SELECT *, row_number() OVER ({rn_over}) AS {q('__rn2')}, "
-                 f"count(*) OVER ({part}) AS {q('__cnt')} FROM ({base}) t")
+        rn, cnt = _uniq("srn"), _uniq("cnt")
+        inner = (f"SELECT *, row_number() OVER ({rn_over}) AS {q(rn)}, "
+                 f"count(*) OVER ({part}) AS {q(cnt)} FROM ({base}) t")
         if node.kind == "head":
-            cond = f"{q('__rn2')} <= {node.n}"
+            cond = f"{q(rn)} <= {node.n}"
         else:
-            cond = f"{q('__rn2')} > {q('__cnt')} - {node.n}"
+            cond = f"{q(rn)} > {q(cnt)} - {node.n}"
         sql = f"SELECT {_cols(node.schema)} FROM ({inner}) t WHERE {cond}"
         return _Compiled(sql, None)
+
+    if isinstance(node, p.Separate):
+        c = compile_plan(node.child)
+        sep_items: list[str] = []
+        for out_name in node.schema:
+            if out_name in node.into:
+                i = node.into.index(out_name) + 1  # duckdb lists are 1-based
+                sep_items.append(
+                    f"str_split({q(node.column)}, {sql_lit(node.sep)})[{i}] "
+                    f"AS {q(out_name)}")
+            else:
+                sep_items.append(q(out_name))
+        return _Compiled(
+            f"SELECT {', '.join(sep_items)} FROM ({c.sql}) t", c.order)
+
+    if isinstance(node, p.Unite):
+        c = compile_plan(node.child)
+        if node.na_rm:
+            cast_parts = ", ".join(f"CAST({q(u)} AS VARCHAR)" for u in node.cols)
+        else:  # tidyr renders missing values as the string 'NA'
+            cast_parts = ", ".join(
+                f"COALESCE(CAST({q(u)} AS VARCHAR), 'NA')" for u in node.cols)
+        joined = f"concat_ws({sql_lit(node.sep)}, {cast_parts})"
+        unite_items = [f"{joined} AS {q(k)}" if k == node.new else q(k)
+                       for k in node.schema]
+        return _Compiled(
+            f"SELECT {', '.join(unite_items)} FROM ({c.sql}) t", c.order)
 
     if isinstance(node, (p.GroupBy, p.Ungroup)):
         return compile_plan(node.child)

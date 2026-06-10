@@ -20,12 +20,23 @@ from .expr import (
     StrExpr,
     TemporalExpr,
     case_when,
+    coalesce,
     col,
+    cum_max,
+    cum_min,
+    cum_sum,
+    dense_rank,
     desc,
     if_else,
     infer_dtype,
+    lag,
+    lead,
     lit,
+    min_rank,
     n,
+    percent_rank,
+    replace_na,
+    row_number,
     typed_col,
 )
 from .frame import (
@@ -55,7 +66,7 @@ from .tidyselect import (
     where,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     # frame + sources
@@ -63,6 +74,8 @@ __all__ = [
     "from_pandas", "read_parquet", "read_csv", "from_duckdb", "read_sql",
     # expressions
     "col", "n", "desc", "if_else", "case_when", "lit", "Expr", "typed_col",
+    "lag", "lead", "row_number", "min_rank", "dense_rank", "percent_rank",
+    "cum_sum", "cum_min", "cum_max", "coalesce", "replace_na",
     "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr", "infer_dtype",
     # tidyselect / across
     "across", "starts_with", "ends_with", "contains", "matches", "where",

@@ -1,0 +1,31 @@
+data:
+  g:
+  - a
+  - a
+  - a
+  - b
+  - b
+  x:
+  - 3
+  - 1
+  - 2
+  - 9
+  - null
+  tag:
+  - t1
+  - t2
+  - t3
+  - t4
+  - t5
+types:
+  g: str
+  x: int
+  tag: str
+chain:
+- verb: group_by
+  cols:
+  - g
+- verb: mutate
+  r: p = dplyr::lag(x), nx = dplyr::lead(x), p2 = dplyr::lag(x, 2L, default = 0L)
+  py: p=lag(col.x), nx=lead(col.x), p2=lag(col.x, 2, default=0)
+- verb: ungroup

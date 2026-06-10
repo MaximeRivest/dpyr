@@ -22,7 +22,7 @@ from .errors import (
     ExprTypeError,
     GroupError,
 )
-from .expr import Agg, Col, Desc, Expr, N, contains_agg, infer_dtype
+from .expr import Agg, Col, Desc, Expr, N, contains_agg, contains_window, infer_dtype
 
 Schema = dict[str, DType]
 JoinHow = Literal["inner", "left", "right", "full", "semi", "anti"]
@@ -199,6 +199,81 @@ class Slice(PlanNode):
 
 
 @dataclass(frozen=True, repr=False)
+class Separate(PlanNode):
+    """tidyr::separate — split a string column into several (literal sep;
+    missing pieces become null)."""
+    child: PlanNode
+    column: str
+    into: tuple[str, ...]
+    sep: str = "_"
+    remove: bool = True
+
+    def __post_init__(self) -> None:
+        _check_cols([self.column], self.child.schema, "separate()")
+        if self.child.schema[self.column] not in (dt.STR, dt.NULL):
+            raise ExprTypeError(
+                f"separate() needs a string column, got "
+                f"{self.child.schema[self.column]!r}")
+        if not self.into:
+            raise ExprTypeError("separate() needs at least one name in into=")
+        schema: Schema = {}
+        for k, v in self.child.schema.items():
+            if k == self.column:
+                for name in self.into:
+                    if name in schema or (name in self.child.schema
+                                          and (name != self.column or not self.remove)):
+                        raise DuplicateColumnError(name, "separate()")
+                    schema[name] = dt.STR
+                if not self.remove:
+                    schema[k] = v
+            else:
+                schema[k] = v
+        self._finish(schema, self.child.groups)
+
+    def __repr__(self) -> str:
+        return (f"{self.child!r}.separate({self.column}, into=({', '.join(self.into)}), "
+                f"sep={self.sep!r}, remove={self.remove})")
+
+
+@dataclass(frozen=True, repr=False)
+class Unite(PlanNode):
+    """tidyr::unite — paste several columns into one string column placed
+    at the position of the first source column. na_rm=False renders missing
+    values as the literal string 'NA', like tidyr."""
+    child: PlanNode
+    new: str
+    cols: tuple[str, ...]
+    sep: str = "_"
+    remove: bool = True
+    na_rm: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.cols:
+            raise ExprTypeError("unite() needs at least one source column")
+        _check_cols(list(self.cols), self.child.schema, "unite()")
+        schema: Schema = {}
+        placed = False
+        for k, v in self.child.schema.items():
+            if k in self.cols:
+                if not placed:
+                    if self.new in self.child.schema and self.new not in self.cols:
+                        raise DuplicateColumnError(self.new, "unite()")
+                    schema[self.new] = dt.STR
+                    placed = True
+                if not self.remove:
+                    schema[k] = v
+            else:
+                if k == self.new:
+                    raise DuplicateColumnError(self.new, "unite()")
+                schema[k] = v
+        self._finish(schema, self.child.groups)
+
+    def __repr__(self) -> str:
+        return (f"{self.child!r}.unite({self.new}, ({', '.join(self.cols)}), "
+                f"sep={self.sep!r}, remove={self.remove}, na_rm={self.na_rm})")
+
+
+@dataclass(frozen=True, repr=False)
 class GroupBy(PlanNode):
     child: PlanNode
     keys: tuple[str, ...]
@@ -239,8 +314,11 @@ class Summarize(PlanNode):
         schema: Schema = {g: self.child.schema[g] for g in self.child.groups}
         for name, e in self.aggs:
             if not contains_agg(e):
+                hint = (" (window functions like lag/min_rank belong in "
+                        "mutate())" if contains_window(e) else "")
                 raise ExprTypeError(
-                    f"summarize({name}=...) must aggregate (use .mean(), n(), ...): {e!r}")
+                    f"summarize({name}=...) must aggregate (use .mean(), "
+                    f"n(), ...){hint}: {e!r}")
             if name in schema:
                 raise DuplicateColumnError(name, "summarize()")
             schema[name] = infer_dtype(e, self.child.schema, context=f"summarize({name}=...)")
@@ -383,6 +461,7 @@ def used_columns(e: Expr) -> set[str]:
 __all__ = [
     "PlanNode", "Source", "Filter", "Mutate", "Select", "Rename", "Arrange",
     "Distinct", "Slice", "GroupBy", "Ungroup", "Summarize", "Join", "PivotLonger",
+    "Separate", "Unite",
     "PivotWider", "plan_hash", "used_columns", "Schema", "JoinHow",
     "Agg", "Col", "Desc", "Expr", "N",
 ]

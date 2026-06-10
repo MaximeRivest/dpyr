@@ -1,0 +1,19 @@
+data:
+  id:
+  - 1
+  - 2
+  - 3
+  code:
+  - a_x
+  - b_y_z
+  - c
+types:
+  id: int
+  code: str
+chain:
+- verb: separate
+  column: code
+  into:
+  - k
+  - v
+  sep: _

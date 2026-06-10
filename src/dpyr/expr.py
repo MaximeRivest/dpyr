@@ -278,6 +278,32 @@ class N(Expr):
         return "n()"
 
 
+_WINDOW_FUNCS = {"lag", "lead", "row_number", "min_rank", "dense_rank",
+                 "percent_rank", "cum_sum", "cum_min", "cum_max"}
+
+
+@dataclass(frozen=True, eq=False)
+class Window(Expr):
+    """Order-sensitive per-row functions (dplyr window functions).
+
+    Valid in mutate()/filter(); they respect active groups and any pending
+    arrange() order, like dplyr.
+    """
+    name: str
+    operand: Expr | None = None    # None for row_number()
+    n: int = 1                     # lag/lead offset
+    default: Expr = field(default_factory=lambda: Lit(None))
+    descending: bool = False       # ranks built from desc(x)
+
+    def __repr__(self) -> str:
+        parts = [] if self.operand is None else [repr(self.operand)]
+        if self.name in ("lag", "lead"):
+            parts += [str(self.n), f"default={self.default!r}"]
+        if self.descending:
+            parts.append("desc=True")
+        return f"{self.name}({', '.join(parts)})"
+
+
 @dataclass(frozen=True, eq=False)
 class Desc(Expr):
     """Sort-direction marker; only valid directly inside arrange()."""
@@ -336,6 +362,58 @@ def desc(e: Expr) -> Desc:
     return Desc(e)
 
 
+def lag(e: Expr, n: int = 1, default: IntoExpr = None) -> Window:
+    return Window("lag", e, n, _wrap(default))
+
+
+def lead(e: Expr, n: int = 1, default: IntoExpr = None) -> Window:
+    return Window("lead", e, n, _wrap(default))
+
+
+def row_number() -> Window:
+    return Window("row_number")
+
+
+def _rank(name: str, e: Expr) -> Window:
+    if isinstance(e, Desc):
+        return Window(name, e.operand, descending=True)
+    return Window(name, e)
+
+
+def min_rank(e: Expr) -> Window:
+    return _rank("min_rank", e)
+
+
+def dense_rank(e: Expr) -> Window:
+    return _rank("dense_rank", e)
+
+
+def percent_rank(e: Expr) -> Window:
+    return _rank("percent_rank", e)
+
+
+def cum_sum(e: Expr) -> Window:
+    return Window("cum_sum", e)
+
+
+def cum_min(e: Expr) -> Window:
+    return Window("cum_min", e)
+
+
+def cum_max(e: Expr) -> Window:
+    return Window("cum_max", e)
+
+
+def coalesce(*exprs: IntoExpr) -> Func:
+    if len(exprs) < 2:
+        raise ExprTypeError("coalesce() needs at least two arguments")
+    return Func("coalesce", tuple(_wrap(e) for e in exprs))
+
+
+def replace_na(e: Expr, value: IntoExpr) -> Func:
+    return Func("replace_na", (e, _wrap(value)))
+
+
 def if_else(cond: Expr, true: IntoExpr, false: IntoExpr) -> IfElse:
     return IfElse(cond, _wrap(true), _wrap(false))
 
@@ -388,6 +466,32 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
             return dt.INT64
         if isinstance(e, Desc):
             raise ExprTypeError("desc() is only valid directly inside arrange()")
+        if isinstance(e, Window):
+            if in_agg:
+                raise ExprTypeError(
+                    f"window function {e.name}() inside an aggregate is not "
+                    "supported; compute it in a mutate() first")
+            if e.name == "row_number":
+                return dt.INT64
+            assert e.operand is not None
+            inner = rec(e.operand, in_agg)
+            if e.name in ("lag", "lead"):
+                merged = dt.unify(inner, rec(e.default, in_agg))
+                if merged is None:
+                    raise ExprTypeError(
+                        f"{e.name}() default dtype incompatible with column "
+                        f"dtype {inner!r}")
+                return merged
+            if e.name in ("min_rank", "dense_rank"):
+                return dt.INT64
+            if e.name == "percent_rank":
+                return dt.FLOAT64
+            # cumulative aggregates need numerics (cum_sum of bool counts)
+            if e.name == "cum_sum" and inner == dt.BOOL:
+                return dt.INT64
+            if e.name == "cum_sum" and not (dt.is_numeric(inner) or inner == dt.NULL):
+                raise ExprTypeError(f"cum_sum() needs a numeric, got {inner!r}")
+            return inner
         if isinstance(e, Cast):
             rec(e.operand, in_agg)
             return e.to
@@ -469,6 +573,16 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
 
 def _func_dtype(e: Func, arg_types: list[DType]) -> DType:
     name, first = e.name, arg_types[0]
+    if name in ("coalesce", "replace_na"):
+        merged: DType = arg_types[0]
+        for t in arg_types[1:]:
+            unified = dt.unify(merged, t)
+            if unified is None:
+                raise ExprTypeError(
+                    f"{name}() arguments have incompatible dtypes "
+                    f"{merged!r} and {t!r}")
+            merged = unified
+        return merged
     if name == "is_na":
         return dt.BOOL
     if name == "is_in":
@@ -494,23 +608,34 @@ def _func_dtype(e: Func, arg_types: list[DType]) -> DType:
     raise AssertionError(f"unknown function {name}")
 
 
+def _children(e: Expr) -> tuple[Expr, ...]:
+    if isinstance(e, BinOp):
+        return (e.left, e.right)
+    if isinstance(e, (UnaryOp, Desc, Cast)):
+        return (e.operand,)
+    if isinstance(e, Func):
+        return e.args
+    if isinstance(e, IfElse):
+        return (e.cond, e.true, e.false)
+    if isinstance(e, CaseWhen):
+        return tuple(x for pair in e.cases for x in pair) + (e.default,)
+    if isinstance(e, Window):
+        ops = () if e.operand is None else (e.operand,)
+        return (*ops, e.default)
+    if isinstance(e, Agg):
+        return (e.operand,)
+    return ()
+
+
 def contains_agg(e: Expr) -> bool:
     """True if the expression aggregates (Agg or n()) at any depth."""
     if isinstance(e, (Agg, N)):
         return True
-    children: tuple[Expr, ...]
-    if isinstance(e, BinOp):
-        children = (e.left, e.right)
-    elif isinstance(e, (UnaryOp, Desc)):
-        children = (e.operand,)
-    elif isinstance(e, Cast):
-        children = (e.operand,)
-    elif isinstance(e, Func):
-        children = e.args
-    elif isinstance(e, IfElse):
-        children = (e.cond, e.true, e.false)
-    elif isinstance(e, CaseWhen):
-        children = tuple(x for pair in e.cases for x in pair) + (e.default,)
-    else:
-        children = ()
-    return any(contains_agg(c) for c in children)
+    return any(contains_agg(c) for c in _children(e))
+
+
+def contains_window(e: Expr) -> bool:
+    """True if the expression uses a window function at any depth."""
+    if isinstance(e, Window):
+        return True
+    return any(contains_window(c) for c in _children(e))

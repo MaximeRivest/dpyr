@@ -1,0 +1,28 @@
+data:
+  g:
+  - a
+  - a
+  - a
+  - b
+  - b
+  x:
+  - 3
+  - 1
+  - 2
+  - 9
+  - null
+  tag:
+  - t1
+  - t2
+  - t3
+  - t4
+  - t5
+types:
+  g: str
+  x: int
+  tag: str
+chain:
+- verb: mutate
+  r: rn = dplyr::row_number(), r = dplyr::min_rank(x), dr = dplyr::dense_rank(x),
+    rd = dplyr::min_rank(dplyr::desc(x))
+  py: rn=row_number(), r=min_rank(col.x), dr=dense_rank(col.x), rd=min_rank(desc(col.x))

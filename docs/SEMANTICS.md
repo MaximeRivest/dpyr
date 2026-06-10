@@ -47,3 +47,7 @@ Rows added during implementation (discovered by the oracle/fuzzer):
 | S26 | `pivot_wider` duplicate keys | warns, builds list-columns | polars keeps first | **pinned**: UserWarning + keep first; a NULL in names_from becomes a column named 'null' (dplyr: 'NA') |
 | S27 | duckdb sources from different connections in one plan | n/a | undefined | **pinned**: BackendError at collect; persist one side first |
 | S28 | `arrange` before order-sensitive aggregates (`first`/`last`) | honored | engines vary | **R**: both backends honor pending sort order (ordered aggregates / framed windows on duckdb) |
+| S29 | cumulative aggregates over missing values | NA poisons the rest (R cumsum) | polars: null at the null row, running total continues; SQL: skips | **P** (polars): null at the null position, total continues; divergence from R documented |
+| S30 | `percent_rank` | (min_rank-1)/(non-missing-1) | SQL percent_rank counts NULL rows | **R**: built from min_rank and non-missing count on both backends |
+| S31 | `separate()` sep | regex, default non-alnum | n/a | **pinned**: literal separator string, default "_" |
+| S32 | `unite()` missing values | "NA" string (na.rm=FALSE) / dropped (TRUE) | engines skip or null | **R**: na_rm=False renders 'NA', na_rm=True drops (all-missing rows join to '') |

@@ -14,7 +14,7 @@ import pytest
 import dpyr as d
 from dpyr import across, col, desc, everything, is_numeric, n, plan_hash, where
 
-from conftest import STARWARS
+from conftest import STARWARS, make_duckdb, make_polars
 
 
 # -- cache-key completeness (blockers) ------------------------------------
@@ -174,3 +174,24 @@ def test_duckdb_source_token_stable_per_connection():
     con.execute("CREATE TABLE t AS SELECT 1 AS x")
     assert plan_hash(d.from_duckdb(con, "t").plan) == \
         plan_hash(d.from_duckdb(con, "t").plan)
+
+
+def test_synthesized_sql_names_never_collide():
+    """The slice/arrange hidden columns once collided (a fixed '__rn2' vs
+    counter-generated '__rn2'), making duckdb bind ambiguously and return
+    the input-order tail ~0.3% of the time. All synthesized names now come
+    from one counter; 60 consecutive compilations must stay deterministic."""
+    import polars as pl
+    df = pl.DataFrame({"s": [None, None, "b", "b", "zz", "zz", "a", None],
+                       "x": [9.0, -33.0, None, None, -15.0, 19.0, None, 50.0]})
+    keys = [col.s, col.x]
+    expected = None
+    for _ in range(60):
+        pf = make_polars(df).arrange(*keys).slice_tail(3).collect() \
+            .sort(["s", "x"], nulls_last=True)
+        dk = make_duckdb(df).arrange(*keys).slice_tail(3).collect() \
+            .sort(["s", "x"], nulls_last=True)
+        assert pf.equals(dk)
+        if expected is None:
+            expected = dk
+        assert dk.equals(expected)

@@ -66,6 +66,11 @@ R and the engines genuinely disagree, the decision is documented in
 | `left_join(a, b, by = "k")` | `a.left_join(b, on = col.k)` |
 | `pivot_longer(df, x:y)` | `df.pivot_longer([col.x, col.y])` |
 | `if_else()`, `case_when()`, `n_distinct()` | `if_else()`, `case_when()`, `.n_unique()` |
+| `lag()`, `lead()`, `row_number()`, `min_rank()` | `lag()`, `lead()`, `row_number()`, `min_rank()` |
+| `cumsum()`, `dense_rank()`, `percent_rank()` | `cum_sum()`, `dense_rank()`, `percent_rank()` |
+| `slice_min(x, n)`, `slice_max(x, n)` (ties kept) | `slice_min(col.x, n)`, `slice_max(col.x, n)` |
+| `separate()`, `unite()`, `relocate()` | `separate()`, `unite()`, `relocate()` |
+| `coalesce()`, `replace_na()` | `coalesce()`, `replace_na()` |
 
 Grouped `mutate`/`filter` are windowed per group, `summarize` peels one
 grouping level, joins use `.x`/`.y` suffixes and match NAs by default —

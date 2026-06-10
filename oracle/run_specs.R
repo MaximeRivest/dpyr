@@ -59,6 +59,20 @@ apply_step <- function(df, step, env) {
     return(dplyr::distinct(df, !!!syms(step$cols)))
   }
   if (verb == "slice_head") return(dplyr::slice_head(df, n = step$rows))
+  if (verb == "slice_min") {
+    return(dplyr::slice_min(df, !!sym(step$order), n = step$rows))
+  }
+  if (verb == "slice_max") {
+    return(dplyr::slice_max(df, !!sym(step$order), n = step$rows))
+  }
+  if (verb == "separate") {
+    return(tidyr::separate(df, !!sym(step$column), into = unlist(step$into),
+                           sep = step$sep, fill = "right", extra = "drop"))
+  }
+  if (verb == "unite") {
+    return(tidyr::unite(df, !!step$new, dplyr::all_of(unlist(step$cols)),
+                        sep = step$sep))
+  }
   if (verb == "slice_tail") return(dplyr::slice_tail(df, n = step$rows))
   if (verb == "count") {
     if (is.null(step$cols)) return(dplyr::count(df))

@@ -1,0 +1,34 @@
+data:
+  g:
+  - a
+  - a
+  - a
+  - b
+  - b
+  x:
+  - 3
+  - 1
+  - 2
+  - 9
+  - null
+  tag:
+  - t1
+  - t2
+  - t3
+  - t4
+  - t5
+types:
+  g: str
+  x: int
+  tag: str
+chain:
+- verb: filter
+  r: '!is.na(x)'
+  py: ~col.x.is_na()
+- verb: group_by
+  cols:
+  - g
+- verb: mutate
+  r: cs = cumsum(x), cm = cummin(x), cx = cummax(x)
+  py: cs=cum_sum(col.x), cm=cum_min(col.x), cx=cum_max(col.x)
+- verb: ungroup

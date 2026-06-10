@@ -33,7 +33,9 @@ from .expr import (
     Lit,
     N,
     UnaryOp,
+    Window,
     contains_agg,
+    contains_window,
     infer_dtype,
 )
 
@@ -93,7 +95,7 @@ class _Ctx:
 
 def compile_expr(e: Expr, ctx: _Ctx) -> pl.Expr:
     out = _compile(e, ctx)
-    if ctx.window and contains_agg(e):
+    if ctx.window and (contains_agg(e) or contains_window(e)):
         out = out.over(list(ctx.window))
     return out
 
@@ -151,9 +153,41 @@ def _compile(e: Expr, ctx: _Ctx) -> pl.Expr:
         for cond, val in cases:
             out = out.when(_compile(cond, ctx)).then(_compile(val, ctx))
         return out.otherwise(_compile(e.default, ctx))
+    if isinstance(e, Window):
+        return _compile_window(e, ctx)
     if isinstance(e, Func):
         return _compile_func(e, ctx)
     raise AssertionError(f"unhandled expression node {type(e).__name__}")
+
+
+def _compile_window(e: Window, ctx: _Ctx) -> pl.Expr:
+    if e.name == "row_number":
+        return (pl.int_range(pl.len()) + 1).cast(pl.Int64)
+    assert e.operand is not None
+    x = _compile(e.operand, ctx)
+    if e.name in ("lag", "lead"):
+        n = e.n if e.name == "lag" else -e.n
+        if isinstance(e.default, Lit) and e.default.value is None:
+            return x.shift(n)
+        return x.shift(n, fill_value=_compile(e.default, ctx))
+    if e.name == "min_rank":
+        return x.rank(method="min", descending=e.descending).cast(pl.Int64)
+    if e.name == "dense_rank":
+        return x.rank(method="dense", descending=e.descending).cast(pl.Int64)
+    if e.name == "percent_rank":
+        # dplyr: (min_rank - 1) / (number of non-missing - 1)
+        rank = x.rank(method="min", descending=e.descending).cast(pl.Float64)
+        denom = (x.is_not_null().sum() - 1).cast(pl.Float64)
+        return (rank - 1) / denom
+    if e.name == "cum_sum":
+        in_dt = infer_dtype(e.operand, ctx.schema)
+        base = x.cast(pl.Int64) if in_dt == dt.BOOL else x
+        return base.cum_sum()
+    if e.name == "cum_min":
+        return x.cum_min()
+    if e.name == "cum_max":
+        return x.cum_max()
+    raise AssertionError(e.name)
 
 
 def _compile_agg(e: Agg, inner: pl.Expr, ctx: _Ctx) -> pl.Expr:
@@ -187,6 +221,10 @@ def _compile_func(e: Func, ctx: _Ctx) -> pl.Expr:
     args = [_compile(a, ctx) for a in e.args]
     x = args[0]
     name = e.name
+    if name == "coalesce":
+        return pl.coalesce(args)
+    if name == "replace_na":
+        return x.fill_null(args[1])
     if name == "is_na":
         # S1: R's is.na is TRUE for NaN too
         if infer_dtype(e.args[0], ctx.schema) == dt.FLOAT64:
@@ -298,6 +336,27 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
             out = gb.head(node.n) if node.kind == "head" else gb.tail(node.n)
             return out.select(list(node.schema))  # keys are moved first; undo
         return lf.head(node.n) if node.kind == "head" else lf.tail(node.n)
+
+    if isinstance(node, p.Separate):
+        lf = compile_plan(node.child)
+        parts = pl.col(node.column).str.split(node.sep)
+        new_cols = [parts.list.get(i, null_on_oob=True).alias(name)
+                    for i, name in enumerate(node.into)]
+        return lf.with_columns(new_cols).select(list(node.schema))
+
+    if isinstance(node, p.Unite):
+        lf = compile_plan(node.child)
+        pieces: list[pl.Expr] = []
+        for c in node.cols:
+            piece = pl.col(c).cast(pl.String)
+            if not node.na_rm:
+                piece = piece.fill_null("NA")  # tidyr renders missing as 'NA'
+            pieces.append(piece)
+        united = pl.concat_str(pieces, separator=node.sep,
+                               ignore_nulls=node.na_rm).alias(node.new)
+        if node.na_rm:
+            united = united.fill_null("")  # all-missing row joins to ''
+        return lf.with_columns(united).select(list(node.schema))
 
     if isinstance(node, (p.GroupBy, p.Ungroup)):
         return compile_plan(node.child)  # grouping is metadata

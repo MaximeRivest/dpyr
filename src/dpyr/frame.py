@@ -15,8 +15,9 @@ import functools
 from . import plan as p
 from .backend import BackendError, DuckPayload, PolarsPayload, register
 from .dtypes import DType
-from .errors import ColumnNotFoundError, GroupError
+from .errors import ColumnNotFoundError, ExprTypeError, GroupError
 from .expr import Col, Desc, Expr, typed_col
+from .expr import desc as desc_
 from .materialize import collect, options, persist_source, preview
 
 if TYPE_CHECKING:
@@ -32,7 +33,8 @@ _VERBS = ("filter", "mutate", "select", "rename", "arrange", "distinct",
           "slice_head", "slice_tail", "slice_sample", "group_by",
           "summarize", "summarise", "count", "inner_join", "left_join",
           "right_join", "full_join", "semi_join", "anti_join",
-          "pivot_longer", "pivot_wider", "pull")
+          "pivot_longer", "pivot_wider", "pull", "separate", "unite",
+          "relocate", "slice_min", "slice_max")
 
 
 def _polish_tracebacks(cls: type) -> type:
@@ -289,6 +291,57 @@ class DFrame(Generic[S]):
         # on a grouped frame the result stays grouped by the original keys,
         # exactly like dplyr's count()
         return self.group_by(*cols).summarize(**{name: n_()})
+
+    # -- tidyr-style reshapers ------------------------------------------
+    def separate(self, column: ColRef, into: list[str], sep: str = "_",
+                 remove: bool = True) -> DFrame:
+        return self._spawn(p.Separate(self._plan, _name(column, "separate()"),
+                                      tuple(into), sep, remove))
+
+    def unite(self, new: str, cols: list[ColRef], sep: str = "_",
+              remove: bool = True, na_rm: bool = False) -> DFrame:
+        names = tuple(_name(c, "unite()") for c in cols)
+        return self._spawn(p.Unite(self._plan, new, names, sep, remove, na_rm))
+
+    def relocate(self, *cols: Any, before: ColRef | None = None,
+                 after: ColRef | None = None) -> DFrame:
+        from .tidyselect import resolve_selection
+        moved = list(resolve_selection(cols, self._plan.schema, "relocate()"))
+        rest = [c for c in self._plan.schema if c not in moved]
+        if before is not None and after is not None:
+            raise ExprTypeError("relocate() takes before= or after=, not both")
+        if before is not None:
+            anchor = _name(before, "relocate()")
+            i = rest.index(anchor)
+            order = rest[:i] + moved + rest[i:]
+        elif after is not None:
+            anchor = _name(after, "relocate()")
+            i = rest.index(anchor) + 1
+            order = rest[:i] + moved + rest[i:]
+        else:
+            order = moved + rest  # dplyr default: move to the front
+        return self._spawn(p.Select(self._plan, tuple(order)))
+
+    def _slice_rank(self, order_by: Expr, n: int, with_ties: bool,
+                    descending: bool) -> DFrame:
+        from .expr import Window, min_rank, row_number  # noqa: F401
+        key = desc_(order_by) if descending else order_by
+        if with_ties:
+            rank = min_rank(key)
+            out = self.filter(rank <= n)
+        else:
+            arranged = self.arrange(key)
+            return arranged.slice_head(n)
+        return out.arrange(key)
+
+    def slice_min(self, order_by: Expr, n: int = 1,
+                  with_ties: bool = True) -> DFrame:
+        """Rows with the n smallest values (ties kept by default, like dplyr)."""
+        return self._slice_rank(order_by, n, with_ties, descending=False)
+
+    def slice_max(self, order_by: Expr, n: int = 1,
+                  with_ties: bool = True) -> DFrame:
+        return self._slice_rank(order_by, n, with_ties, descending=True)
 
     # -- joins -----------------------------------------------------------
     def _join(self, other: DFrame, how: p.JoinHow, on: ColRef | list[ColRef],

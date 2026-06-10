@@ -15,7 +15,7 @@ from hypothesis import strategies as st
 from polars.testing import assert_frame_equal
 
 import dpyr as d
-from dpyr import col, if_else, n
+from dpyr import coalesce, col, cum_sum, dense_rank, if_else, lag, lead, min_rank, n, row_number
 
 # -- data ----------------------------------------------------------------
 
@@ -86,7 +86,8 @@ def verb(draw, f: d.DFrame):
     """One random verb applicable to f, as a function DFrame -> DFrame."""
     nums, strings = _num_cols(f), _str_cols(f)
     options = ["filter_num", "filter_isna", "mutate_arith", "mutate_ifelse",
-               "select", "distinct", "head", "tail", "summarize", "grouped_mutate"]
+               "select", "distinct", "head", "tail", "summarize", "grouped_mutate",
+               "window", "grouped_window", "slice_minmax"]
     if strings:
         options += ["filter_str", "mutate_str"]
     choice = draw(st.sampled_from(options))
@@ -144,6 +145,31 @@ def verb(draw, f: d.DFrame):
         names = {fresh("cnt"): n(), fresh(f"a_{agg}"): e}
         return lambda fr, names=names, key=key: (
             fr.group_by(col[key]).summarize(**names))
+    if choice == "window" and nums:
+        c = draw(st.sampled_from(nums))
+        kind = draw(st.sampled_from(["lag", "lead", "rank", "dense", "cum", "rn", "coal"]))
+        e = {"lag": lag(col[c]), "lead": lead(col[c], default=0),
+             "rank": min_rank(col[c]), "dense": dense_rank(col[c]),
+             "cum": cum_sum(col[c]), "rn": row_number(),
+             "coal": coalesce(col[c], -1)}[kind]
+        name = f"w{draw(st.integers(0, 99))}"
+        # pin row order first so the window result is deterministic
+        keys = [col[k] for k in f.schema]
+        return lambda fr, e=e, name=name: fr.arrange(*keys).mutate(**{name: e})
+    if choice == "grouped_window" and nums:
+        key = draw(st.sampled_from(list(f.schema)))
+        c = draw(st.sampled_from(nums))
+        e = draw(st.sampled_from([lag(col[c]), cum_sum(col[c]), min_rank(col[c])]))
+        name = f"gw{draw(st.integers(0, 99))}"
+        keys = [col[k] for k in f.schema]
+        return lambda fr, e=e, name=name, key=key: (
+            fr.arrange(*keys).group_by(col[key]).mutate(**{name: e}).ungroup())
+    if choice == "slice_minmax" and nums:
+        c = draw(st.sampled_from(nums))
+        k = draw(st.integers(1, 4))
+        if draw(st.booleans()):
+            return lambda fr, c=c, k=k: fr.slice_min(col[c], k)
+        return lambda fr, c=c, k=k: fr.slice_max(col[c], k)
     if choice == "grouped_mutate" and nums:
         key = draw(st.sampled_from(list(f.schema)))
         c = draw(st.sampled_from(nums))

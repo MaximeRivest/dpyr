@@ -96,7 +96,15 @@ the output because it's differentially tested against dplyr.
 - **8.4** `1.0.0` to PyPI; announce with the differential-test count as
   the headline ("passes N dplyr-generated golden tests").
 
+## 1.1.0 ✅ (published 2026-06-10)
+Window functions (`lag`/`lead`/`row_number`/`min_rank`/`dense_rank`/
+`percent_rank`/`cum_sum`/`cum_min`/`cum_max`), `slice_min`/`slice_max`
+with dplyr tie semantics, `separate`/`unite`/`relocate`,
+`coalesce`/`replace_na` — on both backends, oracle-tested (50 specs) and
+fuzz-tested. Fixed a synthesized-SQL name-collision bug that caused rare
+nondeterministic slice results on duckdb (S3).
+
 ## Post-MVP (parking lot)
-`separate/unite`, `nest`, window function breadth, `slice_min/max`,
+`nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres
 backends via the duckdb SQL layer, plugin API for custom verbs.

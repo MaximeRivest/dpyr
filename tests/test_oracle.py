@@ -53,6 +53,10 @@ _EVAL_NS = {name: globals()[name] for name in (
     "col", "n", "desc", "if_else", "case_when", "lit", "across",
     "starts_with", "ends_with", "contains", "matches", "where",
     "everything", "is_numeric", "is_string")}
+for _name in ("lag", "lead", "row_number", "min_rank", "dense_rank",
+              "percent_rank", "cum_sum", "cum_min", "cum_max", "coalesce",
+              "replace_na"):
+    _EVAL_NS[_name] = getattr(d, _name)
 _EVAL_NS["FLOAT64"] = d.FLOAT64
 _EVAL_NS["INT64"] = d.INT64
 _EVAL_NS["STR"] = d.STR
@@ -86,6 +90,16 @@ def _apply_step(frame: d.DFrame, step: dict, other: d.DFrame | None) -> d.DFrame
         return frame.distinct(*step.get("cols", []))
     if verb == "slice_head":
         return frame.slice_head(step["rows"])
+    if verb == "slice_min":
+        return frame.slice_min(col[step["order"]], step["rows"])
+    if verb == "slice_max":
+        return frame.slice_max(col[step["order"]], step["rows"])
+    if verb == "separate":
+        return frame.separate(step["column"], into=list(step["into"]),
+                              sep=step.get("sep", "_"))
+    if verb == "unite":
+        return frame.unite(step["new"], list(step["cols"]),
+                           sep=step.get("sep", "_"))
     if verb == "slice_tail":
         return frame.slice_tail(step["rows"])
     if verb == "count":
