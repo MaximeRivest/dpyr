@@ -10,14 +10,16 @@ _con = duckdb.connect()
 _table_counter = [0]
 
 
-def make_polars(data: dict) -> d.DFrame:
-    return d.from_polars(pl.DataFrame(data))
+def make_polars(data: dict | pl.DataFrame) -> d.DFrame:
+    df = data if isinstance(data, pl.DataFrame) else pl.DataFrame(data)
+    return d.from_polars(df)
 
 
-def make_duckdb(data: dict) -> d.DFrame:
+def make_duckdb(data: dict | pl.DataFrame) -> d.DFrame:
+    df = data if isinstance(data, pl.DataFrame) else pl.DataFrame(data)
     _table_counter[0] += 1
     name = f"t{_table_counter[0]}"
-    _con.register(f"{name}_arrow", pl.DataFrame(data).to_arrow())
+    _con.register(f"{name}_arrow", df.to_arrow())
     _con.execute(f'CREATE TABLE "{name}" AS SELECT * FROM "{name}_arrow"')
     _con.unregister(f"{name}_arrow")
     return d.from_duckdb(_con, name)

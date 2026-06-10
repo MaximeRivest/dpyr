@@ -1,0 +1,44 @@
+data:
+  name:
+  - Luke
+  - Leia
+  - Han
+  - Chewie
+  - R2D2
+  - Yoda
+  - Vader
+  height:
+  - 172
+  - 150
+  - 180
+  - 228
+  - 96
+  - 66
+  - 202
+  mass:
+  - 77.0
+  - 49.0
+  - 80.0
+  - 112.0
+  - null
+  - 17.0
+  - 136.0
+  species:
+  - Human
+  - Human
+  - Human
+  - Wookiee
+  - Droid
+  - null
+  - Human
+types:
+  name: str
+  height: int
+  mass: float
+  species: str
+chain:
+- verb: summarize
+  r: lo = min(height), hi = max(height), tot = sum(height), med = median(mass, na.rm
+    = TRUE), sdev = sd(height), uniq = dplyr::n_distinct(species)
+  py: lo=col.height.min(), hi=col.height.max(), tot=col.height.sum(), med=col.mass.median(),
+    sdev=col.height.std(), uniq=col.species.n_unique()

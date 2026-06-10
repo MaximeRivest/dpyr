@@ -33,3 +33,14 @@ our own rule, backends forced to comply.
 Process: when a differential test fails and the cause is a *new* semantic
 disagreement, the fix is (1) add a row here, (2) encode it in the harness
 normalization or backend compiler, (3) add a dedicated test naming the row.
+
+Rows added during implementation (discovered by the oracle/fuzzer):
+
+| # | Area | dplyr | polars/duckdb | Decision |
+|---|------|-------|---------------|----------|
+| S20 | `mean`/`median` of zero values (`na_rm=TRUE`, all missing) | `NaN` | `null` | **P**: null; oracle harness compares NaN==null for floats |
+| S21 | Row order after joins, `pivot_longer`, `distinct`-dedup | left-order preserved | engine-dependent | **pinned**: unspecified; pin with `arrange()`; oracle/agreement tests sort before compare |
+| S22 | Join output column positions | left columns keep their original positions, suffixed in place | varies | **R** (verified by join goldens) |
+| S23 | `%` modulo | floor-mod (R `%%`) | polars floor-mod; SQL trunc-mod | **R**: duckdb compiles to `((a % b) + b) % b` |
+| S24 | `is_in` with missing left value | `NA %in% xs` is FALSE | null propagates | **P**: null (filter drops it); divergence from R documented |
+| S25 | grouped `slice_head` column order | original order | polars moves keys first | **R**: compiler restores schema order |

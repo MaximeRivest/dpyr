@@ -1,0 +1,42 @@
+data:
+  name:
+  - Luke
+  - Leia
+  - Han
+  - Chewie
+  - R2D2
+  - Yoda
+  - Vader
+  height:
+  - 172
+  - 150
+  - 180
+  - 228
+  - 96
+  - 66
+  - 202
+  mass:
+  - 77.0
+  - 49.0
+  - 80.0
+  - 112.0
+  - null
+  - 17.0
+  - 136.0
+  species:
+  - Human
+  - Human
+  - Human
+  - Wookiee
+  - Droid
+  - null
+  - Human
+types:
+  name: str
+  height: int
+  mass: float
+  species: str
+chain:
+- verb: select
+  r: -mass
+  py: -col.mass

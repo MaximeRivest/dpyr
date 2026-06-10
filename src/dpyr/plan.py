@@ -255,13 +255,14 @@ class Join(PlanNode):
                 raise ExprTypeError(
                     f"join key '{k}' has incompatible dtypes: "
                     f"{self.left.schema[k]!r} vs {self.right.schema[k]!r}")
-        schema = dict(self.left.schema)
         if self.how in ("semi", "anti"):  # filtering joins keep left schema
-            self._finish(schema, self.left.groups)
+            self._finish(dict(self.left.schema), self.left.groups)
             return
         overlap = (set(self.left.schema) & set(self.right.schema)) - set(self.on)
-        for name in overlap:
-            schema[name + self.suffix[0]] = schema.pop(name)
+        # dplyr keeps left columns in their original positions, suffixed in place
+        schema: Schema = {}
+        for name, dtype in self.left.schema.items():
+            schema[name + self.suffix[0] if name in overlap else name] = dtype
         for name, dtype in self.right.schema.items():
             if name in self.on:
                 continue

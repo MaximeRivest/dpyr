@@ -295,7 +295,8 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
                                        shuffle=True).lazy()
         if groups:
             gb = lf.group_by(list(groups), maintain_order=True)
-            return gb.head(node.n) if node.kind == "head" else gb.tail(node.n)
+            out = gb.head(node.n) if node.kind == "head" else gb.tail(node.n)
+            return out.select(list(node.schema))  # keys are moved first; undo
         return lf.head(node.n) if node.kind == "head" else lf.tail(node.n)
 
     if isinstance(node, p.GroupBy):

@@ -1,0 +1,24 @@
+data:
+  id:
+  - a
+  - a
+  - b
+  - b
+  key:
+  - k1
+  - k2
+  - k1
+  - k2
+  val:
+  - 1.0
+  - 2.0
+  - 3.0
+  - 4.0
+types:
+  id: str
+  key: str
+  val: float
+chain:
+- verb: pivot_wider
+  names_from: key
+  values_from: val
