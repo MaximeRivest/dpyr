@@ -1,6 +1,6 @@
 [project]
 name = "dpyr"
-version = "1.5.0"
+version = "1.6.0"
 description = "dplyr for Python: tidy piped verbs over polars and duckdb, with real autocompletion and dplyr-verified semantics."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,10 @@ dependencies = [
 
 [project.optional-dependencies]
 pandas = ["pandas>=2"]
+excel = [
+    "fastexcel>=0.20.2",
+    "xlsxwriter>=3.2.9",
+]
 
 [project.urls]
 Repository = "https://github.com/MaximeRivest/dpyr"
@@ -45,6 +49,8 @@ dev = [
     "pyyaml>=6.0.3",
     "pandas>=2.3.3",
     "datasets>=5.0.0",
+    "fastexcel>=0.20.2",
+    "xlsxwriter>=3.2.9",
 ]
 
 [build-system]

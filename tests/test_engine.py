@@ -214,13 +214,13 @@ def test_read_write_errors_are_helpful(tmp_path):
     f = d.from_dict({"x": [1]})
     with pytest.raises(d.DpyrError, match="needs a table name"):
         f.write(str(tmp_path / "x.db"))
-    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+    with pytest.raises(d.DpyrError, match="does not apply to parquet"):
         f.write(str(tmp_path / "x.parquet"), "t")
     with pytest.raises(d.DpyrError, match="can't infer a format"):
-        f.write(str(tmp_path / "x.xlsx"))
+        f.write(str(tmp_path / "x.docx"))
     with pytest.raises(d.DpyrError, match="can't infer a format"):
-        d.read(str(tmp_path / "x.xlsx"))
-    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+        d.read(str(tmp_path / "x.docx"))
+    with pytest.raises(d.DpyrError, match="does not apply to csv"):
         d.read(str(tmp_path / "x.csv"), "t")
 
 
@@ -255,7 +255,7 @@ def test_read_is_the_universal_ingest():
     db = d.read(con)
     assert isinstance(db, d.Database) and db.tables == ["t"]
     assert d.read(con, "t").collect()["x"].to_list() == [1]
-    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+    with pytest.raises(d.DpyrError, match="only applies to database"):
         d.read(data, "t")
     with pytest.raises(d.DpyrError, match="doesn't know what to do"):
         d.read(42)
@@ -304,3 +304,53 @@ def test_read_torch_and_jax_if_available():
     t = d.read(torch.tensor([[1.0, 2.0], [3.0, 4.0]]))
     assert t.collect()["column_0"].to_list() == [1.0, 3.0]
     assert d.read({"x": [1.0]}).to_torch().shape == (1, 1)
+
+
+def test_new_formats_roundtrip(tmp_path):
+    f = d.from_dict({"g": ["a", "b"], "x": [1.5, 2.5]})
+    for ext in ("json", "jsonl", "ndjson", "tsv", "xlsx"):
+        p = str(tmp_path / f"t.{ext}")
+        f.write(p)
+        back = d.read(p)
+        assert back.collect().to_dicts() == f.collect().to_dicts(), ext
+
+
+def test_csv_gz_reads(tmp_path):
+    import gzip
+    p = str(tmp_path / "t.csv.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write("x,y\n1,a\n2,b\n")
+    out = d.read(p).collect()
+    assert out["x"].to_list() == [1, 2] and out["y"].to_list() == ["a", "b"]
+
+
+def test_in_engine_json_copy(tmp_path):
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t AS SELECT * FROM range(3) r(x)")
+    p = str(tmp_path / "out.jsonl")
+    d.from_duckdb(con, "t").mutate(y=col.x * 2).write(p)
+    assert d.read(p).collect()["y"].to_list() == [0, 2, 4]
+
+
+def test_sqlite_via_duckdb_scanner(tmp_path):
+    import sqlite3
+    p = str(tmp_path / "legacy.sqlite")
+    sq = sqlite3.connect(p)
+    sq.execute("CREATE TABLE users (name TEXT, age INTEGER)")
+    sq.executemany("INSERT INTO users VALUES (?, ?)",
+                   [("ana", 34), ("bo", 51)])
+    sq.commit()
+    sq.close()
+    try:
+        db = d.read(p)
+    except d.DpyrError as e:
+        pytest.skip(f"sqlite extension unavailable: {e}")
+    assert "users" in db.tables
+    out = d.read(p, "users").filter(col.age > 40).collect()
+    assert out["name"].to_list() == ["bo"]
+
+
+def test_read_write_accept_pathlib(tmp_path):
+    f = d.from_dict({"x": [1, 2]})
+    f.write(tmp_path / "t.parquet")          # a pathlib.Path, not a str
+    assert d.read(tmp_path / "t.parquet").collect().height == 2

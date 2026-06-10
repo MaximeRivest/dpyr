@@ -133,6 +133,14 @@ typos), numpy 1-D/2-D arrays, CPU torch tensors and jax arrays.
 to_numpy()/to_torch()/to_jax() exits. hf:// parquet paths scan directly
 through both engines.
 
+## 1.6.0 ✅ (published 2026-06-10)
+The format registry: every format is a self-contained module registering
+its suffixes/readers/writers (dpyr.formats); read()/write() are thin
+dispatchers. New formats: json, jsonl/ndjson (in-engine COPY), tsv,
+csv.gz, xlsx (dpyr[excel] extra, sheet via second arg), sqlite read via
+duckdb's scanner; pathlib.Path accepted everywhere. New 'Reading &
+writing' guide right after Get started.
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres

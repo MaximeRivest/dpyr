@@ -36,6 +36,7 @@ at the end and the whole thing runs as one fused, pushed-down query.
 ## Where to go
 
 - **[Get started](guide/get-started.md)** — the single-table verbs in one sitting.
+- **[Reading & writing](guide/reading.md)** — every format and source: files, databases, URLs, in-memory objects.
 - **[Grouped data](guide/grouped-data.md)** — `group_by` and everything it changes.
 - **[Joins](guide/joins.md)** — the six two-table verbs.
 - **[Window functions](guide/window-functions.md)** — `lag`, ranks, cumulatives, top-n per group.

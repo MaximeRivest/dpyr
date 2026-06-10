@@ -122,6 +122,15 @@ logical plan + expression IR  ←— schema inference/validation lives here
 - `group_by` returns `GroupedDFrame` (separate type → separate completion
   surface), auto-ungrouping after `summarize`, matching dplyr.
 
+## 4.5 The format registry
+
+Every way in or out of dpyr is one registration in `dpyr.formats`: file
+formats declare their suffixes plus a reader/writer, in-memory ingest
+declares a type predicate plus a reader. `read()`/`write()` are thin
+dispatchers over that table (longest-suffix match for paths, first
+matching predicate for objects), so adding a format is a self-contained
+module that never touches the dispatchers or other formats.
+
 ## 5. Non-goals (MVP)
 
 - No pandas execution backend (only conversion in/out).

@@ -34,6 +34,7 @@ nav:
   - Home: index.md
   - Guides:
       - Get started: guide/get-started.md
+      - Reading & writing: guide/reading.md
       - Grouped data: guide/grouped-data.md
       - Joins: guide/joins.md
       - Window functions: guide/window-functions.md

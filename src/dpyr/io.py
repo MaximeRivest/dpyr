@@ -107,108 +107,48 @@ _IPC_SUFFIXES = (".arrow", ".feather", ".ipc")
 
 
 def read(source: Any, table: str | None = None) -> DFrame | Database:
-    """The one way in. Paths dispatch on extension; everything else
-    dispatches on type:
+    """The one way in. Paths and URLs dispatch on extension; in-memory
+    objects dispatch on type:
 
-        read("orders.parquet")            # parquet scan (globs work)
-        read("orders.csv")                # csv scan
-        read("orders.arrow")              # arrow IPC, memory-mapped
+        read("orders.parquet")            # also .csv/.tsv/.json/.jsonl/
+                                          # .arrow/.xlsx/.csv.gz — and
+                                          # hf:// s3:// https:// URLs
         read("shop.db")                   # duckdb file -> Database catalog
         read("shop.db", "orders")         # one duckdb table -> frame
+        read("legacy.sqlite", "users")    # sqlite via duckdb's scanner
         read({"x": [1, 2]})               # plain Python data
         read(polars_or_pandas_dataframe)  # zero/near-zero copy
         read(arrow_table)
+        read(hf_dataset)                  # Hugging Face (arrow-backed)
+        read(numpy_array_or_tensor)       # numpy / torch / jax
         read(duckdb_connection)           # live connection -> Database
-        read(duckdb_connection, "orders") # one table on that connection
     """
-    import duckdb
+    import os
 
-    from .frame import from_dict, from_polars
-    type_name = f"{type(source).__module__}.{type(source).__name__}"
-    if isinstance(source, dict) and not type_name.startswith("datasets."):
-        # Hugging Face DatasetDict subclasses dict — handled further down
-        if table is not None:
-            raise DpyrError("read(table=...) only applies to duckdb sources")
-        return from_dict(source)
-    if isinstance(source, duckdb.DuckDBPyConnection):
-        db = Database(source, "connection")
-        return db.table(table) if table is not None else db
-    if not isinstance(source, str):
-        import polars as pl
-        if type_name.startswith("datasets.") and "Dict" in type(source).__name__:
-            # a DatasetDict: pick a split via the second argument
-            splits = list(source.keys())
-            if table is None:
-                raise DpyrError(
-                    f"this Hugging Face dataset has splits {splits}; pick "
-                    f"one: read(ds, {splits[0]!r})")
-            if table not in splits:
-                from .errors import ColumnNotFoundError
-                raise ColumnNotFoundError(table, splits, "dataset splits")
-            return read(source[table])
-        if table is not None:
-            raise DpyrError("read(table=...) only applies to duckdb sources "
-                            "and Hugging Face dataset splits")
-        if isinstance(source, (pl.DataFrame, pl.LazyFrame)):
-            return from_polars(source)
-        if type_name.startswith("pandas."):
-            return from_polars(pl.from_pandas(source))
-        if type_name.startswith("pyarrow."):
-            out = pl.from_arrow(source)
-            assert isinstance(out, pl.DataFrame)
-            return from_polars(out)
-        if type_name.startswith("datasets."):
-            # Hugging Face Dataset: arrow-backed, ingested zero-copy
-            arrow = source.data
-            arrow = getattr(arrow, "table", arrow)  # unwrap datasets.table.Table
-            out = pl.from_arrow(arrow)
-            assert isinstance(out, pl.DataFrame)
-            return from_polars(out)
-        if type_name.startswith("numpy."):
-            return _read_array(source)
-        if type_name.startswith("torch."):
-            return _read_array(source.detach().cpu().numpy())
-        if type_name.startswith(("jaxlib.", "jax.")):
-            import numpy as np
-            return _read_array(np.asarray(source))
+    from . import formats
+    if isinstance(source, (str, os.PathLike)):
+        source = os.fspath(source)
+        fmt = formats.match_file(source)
+        if fmt is None or fmt.reader is None:
+            raise DpyrError(
+                f"read() can't infer a format from {source!r}; readable: "
+                f"{formats.readable()}")
+        if table is not None and not fmt.needs_table and fmt.name != "excel":
+            raise DpyrError(
+                f"read(table=...) does not apply to {fmt.name} files")
+        return fmt.reader(source, table)
+    matched = formats.match_object(source)
+    if matched is None:
         raise DpyrError(
-            f"read() doesn't know what to do with {type_name}; give it a "
-            "path, dict, polars/pandas frame, arrow table, numpy array, "
-            "torch/jax tensor, Hugging Face dataset, or duckdb connection")
-    import pathlib
-    suffix = pathlib.PurePath(source).suffix.lower()
-    if suffix in _DB_SUFFIXES:
-        return read_duckdb(source, table)
-    if table is not None:
-        raise DpyrError(
-            f"read(table=...) only applies to duckdb sources, not {suffix!r}")
-    from .frame import read_csv, read_parquet
-    if suffix in (".parquet", ".pq"):
-        return read_parquet(source)
-    if suffix == ".csv":
-        return read_csv(source)
-    if suffix in _IPC_SUFFIXES:
-        return read_ipc(source)
-    raise DpyrError(
-        f"read() can't infer a format from {source!r} (suffix {suffix!r}); "
-        "supported: .parquet/.pq, .csv, .arrow/.feather/.ipc, "
-        ".db/.duckdb/.ddb")
-
-
-def _read_array(arr: Any) -> DFrame:
-    """A 1-D array becomes one column ('value'); a 2-D array becomes
-    columns column_0..column_n (rows stay rows)."""
-    import polars as pl
-
-    from .frame import from_polars
-    if arr.ndim == 1:
-        return from_polars(pl.DataFrame({"value": arr}))
-    if arr.ndim == 2:
-        data = {f"column_{i}": arr[:, i] for i in range(arr.shape[1])}
-        return from_polars(pl.DataFrame(data))
-    raise DpyrError(
-        f"read() takes 1-D or 2-D arrays, got {arr.ndim}-D shape "
-        f"{tuple(arr.shape)}")
+            f"read() doesn't know what to do with {formats.type_name(source)}; "
+            "give it a path, dict, polars/pandas frame, arrow table, numpy "
+            "array, torch/jax tensor, Hugging Face dataset, or duckdb "
+            "connection")
+    name, reader = matched
+    if table is not None and name not in ("duckdb-connection", "hf-splits"):
+        raise DpyrError("read(table=...) only applies to database sources "
+                        "and Hugging Face dataset splits")
+    return reader(source, table)
 
 
 def read_ipc(path: str) -> DFrame:

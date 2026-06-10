@@ -369,39 +369,28 @@ class DFrame(Generic[S]):
             self.collect().write_parquet(path)
 
     def write(self, path: str, table: str | None = None) -> DFrame | None:
-        """The one writer: dispatches on file extension.
+        """The one way out to files: dispatches on extension —
+        .parquet/.pq, .csv, .tsv, .json, .jsonl/.ndjson,
+        .arrow/.feather/.ipc, .xlsx, and .db/.duckdb/.ddb (give a table
+        name: write("shop.db", "orders")). duckdb plans write parquet/
+        csv/json in-engine via COPY."""
+        import os
 
-            df.write("out.parquet")          # in-engine COPY on duckdb
-            df.write("out.csv")
-            df.write("out.arrow")            # arrow IPC
-            df.write("shop.db", "orders")    # a table inside a duckdb file
-
-        Returns the bound frame for duckdb destinations, None otherwise.
-        """
-        import pathlib
-        suffix = pathlib.PurePath(path).suffix.lower()
-        from .io import _DB_SUFFIXES, _IPC_SUFFIXES
-        if suffix in _DB_SUFFIXES:
-            if table is None:
-                raise BackendError(
-                    f"write({path!r}) needs a table name: "
-                    f"write({path!r}, 'orders')")
-            return self.write_duckdb(path, table)
-        if table is not None:
+        from . import formats
+        path = os.fspath(path)
+        fmt = formats.match_file(path)
+        if fmt is None or fmt.writer is None:
             raise BackendError(
-                f"write(table=...) only applies to duckdb files, not {suffix!r}")
-        if suffix in (".parquet", ".pq"):
-            self.write_parquet(path)
-            return None
-        if suffix == ".csv":
-            self.write_csv(path)
-            return None
-        if suffix in _IPC_SUFFIXES:
-            self.write_ipc(path)
-            return None
-        raise BackendError(
-            f"write() can't infer a format from {path!r}; supported: "
-            ".parquet/.pq, .csv, .arrow/.feather/.ipc, .db/.duckdb/.ddb")
+                f"write() can't infer a format from {path!r}; writable: "
+                f"{formats.writable()}")
+        if fmt.needs_table and table is None:
+            raise BackendError(
+                f"write({path!r}) needs a table name: "
+                f"write({path!r}, 'orders')")
+        if table is not None and not fmt.needs_table and fmt.name != "excel":
+            raise BackendError(
+                f"write(table=...) does not apply to {fmt.name} files")
+        return fmt.writer(self, path, table)
 
     def write_csv(self, path: str) -> None:
         """Write the result as CSV (in-engine COPY on duckdb)."""
