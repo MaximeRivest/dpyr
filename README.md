@@ -12,8 +12,10 @@ pip install dpyr        # or: uv add dpyr
 ```python
 from dpyr import read, col, n, desc
 
-starwars = read("starwars.parquet")   # read() dispatches on extension:
-                                      # .parquet, .csv, .arrow, .db, ...
+starwars = read("starwars.parquet")   # read() takes anything tabular:
+                                      # .parquet/.csv/.arrow/.db paths, dicts,
+                                      # polars/pandas frames, arrow tables,
+                                      # Hugging Face datasets, numpy/torch/jax
 
 (
     starwars

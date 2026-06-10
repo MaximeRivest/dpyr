@@ -42,7 +42,7 @@ at the end and the whole thing runs as one fused, pushed-down query.
 - **[Column-wise operations](guide/column-wise.md)** — tidyselect and `across`.
 - **[Reshaping](guide/reshaping.md)** — pivots, `separate`, `unite`.
 - **[Expressions & autocompletion](guide/expressions.md)** — how the `col` proxy and typed completion work.
-- **[Backends](guide/backends.md)** — connecting and operating polars and duckdb.
+- **[Backends](guide/backends.md)** — connecting and operating polars and duckdb, plus ML interop: Hugging Face datasets, numpy, torch, jax.
 
 ## Why trust it
 

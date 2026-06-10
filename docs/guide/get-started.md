@@ -360,4 +360,5 @@ debug.
 - [Column-wise operations](column-wise.md) — `across()` with tidyselect
 - [Reshaping](reshaping.md) — `pivot_longer`/`pivot_wider`, `separate`,
   `unite`
-- [Backends](backends.md) — polars vs duckdb, `persist()`, lazy mode, caching
+- [Backends](backends.md) — polars vs duckdb, `persist()`, lazy mode,
+  caching, and ML data (Hugging Face datasets, numpy, torch, jax)
