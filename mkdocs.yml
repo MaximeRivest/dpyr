@@ -1,0 +1,48 @@
+site_name: dpyr
+site_description: dplyr for Python — tidy verbs over polars and duckdb
+site_url: https://maximerivest.github.io/dpyr/
+repo_url: https://github.com/MaximeRivest/dpyr
+repo_name: MaximeRivest/dpyr
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - scheme: slate
+      primary: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+  features:
+    - navigation.sections
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+  - tables
+
+nav:
+  - Home: index.md
+  - Guides:
+      - Get started: guide/get-started.md
+      - Grouped data: guide/grouped-data.md
+      - Joins: guide/joins.md
+      - Window functions: guide/window-functions.md
+      - Column-wise operations: guide/column-wise.md
+      - Reshaping: guide/reshaping.md
+      - Expressions & autocompletion: guide/expressions.md
+      - Backends (polars & duckdb): guide/backends.md
+  - Internals:
+      - Design: DESIGN.md
+      - Semantics: SEMANTICS.md
+      - Testing: TESTING.md
+      - Roadmap: ROADMAP.md

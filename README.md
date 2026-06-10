@@ -97,6 +97,13 @@ dpyr.options.interactive = False   # global opt-out for production pipelines
 Results are cached by plan hash, so re-displaying a frame in a notebook
 never recomputes it.
 
+## Documentation
+
+Full guides at **[maximerivest.github.io/dpyr](https://maximerivest.github.io/dpyr/)** —
+get started, grouped data, joins, window functions, column-wise operations,
+reshaping, expressions & autocompletion, and the backends guide
+(connecting and operating polars and duckdb).
+
 ## Project documents
 
 | Doc | What it pins down |
