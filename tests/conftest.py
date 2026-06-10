@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import os
+
 import duckdb
 import polars as pl
 import pytest
 
+from hypothesis import settings as _settings
+
 import dpyr as d
+
+_settings.register_profile("nightly", max_examples=2000, deadline=None)
+if os.environ.get("DPYR_FUZZ_PROFILE") == "nightly":
+    _settings.load_profile("nightly")
 
 _con = duckdb.connect()
 _table_counter = [0]
@@ -45,3 +53,4 @@ STARWARS = {
     "mass": [77.0, 49.0, 80.0, 112.0, None, 17.0],
     "species": ["Human", "Human", "Human", "Wookiee", "Droid", None],
 }
+

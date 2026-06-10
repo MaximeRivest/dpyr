@@ -214,6 +214,19 @@ class GroupBy(PlanNode):
 
 
 @dataclass(frozen=True, repr=False)
+class Ungroup(PlanNode):
+    """Clears active groups. A real node so plan reprs (and therefore the
+    materialization-cache keys) distinguish grouped from ungrouped plans."""
+    child: PlanNode
+
+    def __post_init__(self) -> None:
+        self._finish(self.child.schema, ())
+
+    def __repr__(self) -> str:
+        return f"{self.child!r}.ungroup()"
+
+
+@dataclass(frozen=True, repr=False)
 class Summarize(PlanNode):
     child: PlanNode
     aggs: tuple[tuple[str, Expr], ...]
@@ -272,7 +285,8 @@ class Join(PlanNode):
 
     def __repr__(self) -> str:
         return (f"{self.left!r}.{self.how}_join({self.right!r}, "
-                f"on=({', '.join(self.on)}))")
+                f"on=({', '.join(self.on)}), suffix={self.suffix!r}, "
+                f"na_matches={self.na_matches!r})")
 
 
 @dataclass(frozen=True, repr=False)
@@ -368,7 +382,7 @@ def used_columns(e: Expr) -> set[str]:
 
 __all__ = [
     "PlanNode", "Source", "Filter", "Mutate", "Select", "Rename", "Arrange",
-    "Distinct", "Slice", "GroupBy", "Summarize", "Join", "PivotLonger",
+    "Distinct", "Slice", "GroupBy", "Ungroup", "Summarize", "Join", "PivotLonger",
     "PivotWider", "plan_hash", "used_columns", "Schema", "JoinHow",
     "Agg", "Col", "Desc", "Expr", "N",
 ]

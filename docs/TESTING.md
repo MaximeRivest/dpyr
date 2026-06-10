@@ -76,6 +76,6 @@ Properties, in order of cost:
 |---|---|---|
 | pytest (specs vs committed goldens, both backends) | every push | no |
 | Hypothesis schema/backend/metamorphic | every push | no |
-| golden regeneration + drift check | nightly + golden-touching PRs | yes (docker) |
-| oracle fuzzing | nightly | yes (docker) |
+| golden regeneration + drift check | weekly + manual dispatch | yes (docker) |
+| backend-agreement fuzzing (raised examples) | nightly | no |
 | mypy/pyright incl. generated stubs | every push | no |

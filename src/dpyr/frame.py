@@ -8,7 +8,7 @@ at display/export boundaries (display-eager) unless the frame is .lazy().
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, Literal, TypeVar, cast
 
 import functools
 
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     import polars as pl
 
 ColRef = str | Col
+S = TypeVar("S", bound="ColsProxy")
 IntoPredicate = Expr | Callable[["ColsProxy"], Expr]
 
 _VERBS = ("filter", "mutate", "select", "rename", "arrange", "distinct",
@@ -86,8 +87,13 @@ class ColsProxy:
 
 
 @_polish_tracebacks
-class DFrame:
-    """An ungrouped tidy frame (lazy plan + eager schema)."""
+class DFrame(Generic[S]):
+    """An ungrouped tidy frame (lazy plan + eager schema).
+
+    Generic over a ColsProxy schema class: annotate frames as
+    `DFrame[MyCols]` (see `dpyr stubgen`) and lambda verbs get statically
+    typed column access — `f.filter(lambda c: c.height > 180)` completes
+    and type-checks."""
 
     _interactive: bool = True
 
@@ -110,20 +116,20 @@ class DFrame:
         return list(self._plan.schema)
 
     @property
-    def c(self) -> ColsProxy:
-        return ColsProxy(dict(self._plan.schema))
+    def c(self) -> S:
+        return cast("S", ColsProxy(dict(self._plan.schema)))
 
     def __dir__(self) -> list[str]:  # runtime completion (Epic 7)
         return [*super().__dir__(), *self._plan.schema]
 
     def _spawn(self, node: p.PlanNode) -> DFrame:
         # dispatch on grouping so every verb works on grouped frames too
-        out = GroupedDFrame(node) if node.groups else DFrame(node)
+        out: DFrame = GroupedDFrame(node) if node.groups else DFrame(node)
         out._interactive = self._interactive
         return out
 
     def _spawn_grouped(self, node: p.PlanNode) -> GroupedDFrame:
-        out = GroupedDFrame(node)
+        out: GroupedDFrame = GroupedDFrame(node)
         out._interactive = self._interactive
         return out
 
@@ -134,12 +140,15 @@ class DFrame:
                        kwargs: dict[str, Any]) -> tuple[tuple[str, Expr], ...]:
         from .tidyselect import Across
         out: list[tuple[str, Expr]] = []
+        # dplyr's across() never touches grouping variables
+        non_group = {k: v for k, v in self._plan.schema.items()
+                     if k not in self._plan.groups}
         for a in args:
             if not isinstance(a, Across):
                 raise TypeError(
                     "positional arguments to mutate()/summarize() must be "
                     "across(...); name everything else: mutate(x=...)")
-            out.extend(a.expand(self._plan.schema))
+            out.extend(a.expand(non_group))
         for k, v in kwargs.items():
             out.append((k, v(self.c) if callable(v) else v))
         return tuple(out)
@@ -153,6 +162,11 @@ class DFrame:
         return self.collect()
 
     def to_pandas(self) -> pd.DataFrame:
+        try:
+            import pandas  # noqa: F401
+        except ImportError as err:
+            raise ImportError(
+                "to_pandas() needs pandas: pip install 'dpyr[pandas]'") from err
         return self.collect().to_pandas()
 
     def pull(self, column: ColRef | None = None) -> list[Any]:
@@ -162,8 +176,12 @@ class DFrame:
         return self.collect()[name].to_list()
 
     def persist(self) -> DFrame:
-        """Materialize now and rebind to the result (snapshot checkpoint)."""
-        return self._spawn(persist_source(self._plan))
+        """Materialize now and rebind to the result (snapshot checkpoint).
+        Grouping survives, like dplyr's compute()."""
+        node: p.PlanNode = persist_source(self._plan)
+        if self._plan.groups:
+            node = p.GroupBy(node, self._plan.groups)
+        return self._spawn(node)
 
     def lazy(self) -> DFrame:
         """A copy whose repr/len never trigger execution."""
@@ -248,6 +266,11 @@ class DFrame:
         return self._spawn(p.Slice(self._plan, "tail", n))
 
     def slice_sample(self, n: int = 5, seed: int | None = None) -> DFrame:
+        if seed is None:
+            import random
+            # a drawn seed enters the plan hash, so the cache can never
+            # freeze a "random" sample, and both backends share the seed
+            seed = random.getrandbits(31)
         return self._spawn(p.Slice(self._plan, "sample", n, seed))
 
     def group_by(self, *keys: ColRef) -> GroupedDFrame:
@@ -263,9 +286,9 @@ class DFrame:
         from .expr import n as n_
         if not cols:
             return self.summarize(**{name: n_()})
-        out = self.group_by(*cols).summarize(**{name: n_()})
-        assert isinstance(out, DFrame) and not isinstance(out, GroupedDFrame)
-        return out
+        # on a grouped frame the result stays grouped by the original keys,
+        # exactly like dplyr's count()
+        return self.group_by(*cols).summarize(**{name: n_()})
 
     # -- joins -----------------------------------------------------------
     def _join(self, other: DFrame, how: p.JoinHow, on: ColRef | list[ColRef],
@@ -320,7 +343,7 @@ class DFrame:
 
 
 @_polish_tracebacks
-class GroupedDFrame(DFrame):
+class GroupedDFrame(DFrame[S]):
     """A grouped frame: its own type so completion and semantics differ."""
 
     def __init__(self, plan_node: p.PlanNode) -> None:
@@ -337,7 +360,7 @@ class GroupedDFrame(DFrame):
         return base.replace("# dpyr frame", f"# dpyr frame · groups: {', '.join(self.groups)}")
 
     def ungroup(self) -> DFrame:
-        out = DFrame(_regroup(self._plan, ()))
+        out: DFrame = DFrame(p.Ungroup(self._plan))
         out._interactive = self._interactive
         return out
 
@@ -372,14 +395,6 @@ class GroupedDFrame(DFrame):
         return self._spawn_grouped(p.Slice(self._plan, "tail", n))
 
 
-def _regroup(node: p.PlanNode, groups: tuple[str, ...]) -> p.PlanNode:
-    """Re-tag a plan with different active groups without changing data ops."""
-    import copy
-    clone = copy.copy(node)
-    object.__setattr__(clone, "groups", groups)
-    return clone
-
-
 # ---------------------------------------------------------------------
 # sources
 
@@ -405,25 +420,44 @@ def from_dict(data: dict[str, list[Any]], name: str = "data") -> DFrame:
 
 
 def from_pandas(df: pd.DataFrame, name: str = "pandas") -> DFrame:
-    import polars as pl
-    return from_polars(pl.from_pandas(df), name=name)
+    try:
+        import polars as pl
+        return from_polars(pl.from_pandas(df), name=name)
+    except ImportError as err:
+        raise ImportError(
+            "from_pandas() needs pandas: pip install 'dpyr[pandas]'") from err
+
+
+def _file_token(kind: str, path: str) -> str:
+    # content-addressed: re-reading the same unchanged file shares a plan
+    # hash (cache hits across notebook re-runs); edits change the token
+    import os
+    try:
+        st = os.stat(path)
+        return f"{kind}:{path}:{st.st_mtime_ns}:{st.st_size}"
+    except OSError:
+        return f"{kind}:{path}"
 
 
 def read_parquet(path: str) -> DFrame:
     import polars as pl
 
+    from .backend import _REGISTRY
     from .polars_backend import _normalize, schema_from_polars
     lf = _normalize(pl.scan_parquet(path))
-    token = register(PolarsPayload(lf), hint=f"parquet:{path}")
+    token = _file_token("parquet", path)
+    _REGISTRY[token] = PolarsPayload(lf)
     return DFrame(p.Source(path, tuple(schema_from_polars(lf).items()), token))
 
 
 def read_csv(path: str) -> DFrame:
     import polars as pl
 
+    from .backend import _REGISTRY
     from .polars_backend import _normalize, schema_from_polars
     lf = _normalize(pl.scan_csv(path))
-    token = register(PolarsPayload(lf), hint=f"csv:{path}")
+    token = _file_token("csv", path)
+    _REGISTRY[token] = PolarsPayload(lf)
     return DFrame(p.Source(path, tuple(schema_from_polars(lf).items()), token))
 
 
@@ -431,7 +465,11 @@ def from_duckdb(con: duckdb.DuckDBPyConnection, table: str) -> DFrame:
     from .duckdb_backend import q, schema_from_duckdb
     quoted = q(table)
     schema = schema_from_duckdb(con, quoted)
-    token = register(DuckPayload(con, quoted), hint=f"duck:{table}")
+    # stable per (connection, table): cell re-runs share the cache; after
+    # mutating the table use dpyr.cache_clear() or .persist() (DESIGN §3)
+    from .backend import _REGISTRY
+    token = f"duck:{table}@{id(con)}"
+    _REGISTRY[token] = DuckPayload(con, quoted)
     return DFrame(p.Source(table, tuple(schema.items()), token))
 
 

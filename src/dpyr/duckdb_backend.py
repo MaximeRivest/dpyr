@@ -130,6 +130,8 @@ class _Ctx:
     schema: dict[str, DType]
     window: tuple[str, ...] = ()  # PARTITION BY for grouped mutate/filter
     in_agg: bool = False          # inside summarize aggregation list
+    windowed: bool = False        # aggregates broadcast via OVER (...)
+    order: str | None = None      # pending arrange order (for first/last)
 
 
 def compile_expr(e: Expr, ctx: _Ctx) -> str:
@@ -179,11 +181,17 @@ def compile_expr(e: Expr, ctx: _Ctx) -> str:
     raise AssertionError(f"unhandled expression node {type(e).__name__}")
 
 
-def _over(ctx: _Ctx) -> str:
-    if ctx.in_agg or not ctx.window:
+def _over(ctx: _Ctx, ordered: bool = False) -> str:
+    if ctx.in_agg or not ctx.windowed:
         return ""
-    keys = ", ".join(q(k) for k in ctx.window)
-    return f" OVER (PARTITION BY {keys})"
+    parts = []
+    if ctx.window:
+        parts.append("PARTITION BY " + ", ".join(q(k) for k in ctx.window))
+    if ordered and ctx.order:
+        # explicit full frame: ORDER BY alone makes the window cumulative
+        parts.append(f"ORDER BY {ctx.order} ROWS BETWEEN UNBOUNDED "
+                     "PRECEDING AND UNBOUNDED FOLLOWING")
+    return f" OVER ({' '.join(parts)})"
 
 
 def _compile_agg(e: Agg, ctx: _Ctx) -> str:
@@ -202,6 +210,10 @@ def _compile_agg(e: Agg, ctx: _Ctx) -> str:
                 f"CASE WHEN count(*){over} <> count({x}){over} THEN 1 ELSE 0 END)")
         return f"CAST({body} AS BIGINT)"
     assert fn is not None, e.name
+    if e.name in ("first", "last"):
+        if ctx.in_agg and ctx.order:
+            return f"{fn}({x} ORDER BY {ctx.order})"
+        return f"{fn}({x}){_over(ctx, ordered=True)}"
     if e.name == "sum" and in_dt == dt.BOOL:
         body = f"sum(CASE WHEN {x} THEN 1 WHEN {x} IS NULL THEN NULL ELSE 0 END){over}"
         body = f"COALESCE({body}, 0)" if e.na_rm else body
@@ -287,8 +299,9 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
 
     if isinstance(node, p.Filter):
         c = compile_plan(node.child)
-        ctx = _Ctx(node.child.schema, node.child.groups)
-        if node.child.groups and any(contains_agg(pr) for pr in node.predicates):
+        ctx = _Ctx(node.child.schema, node.child.groups, windowed=True,
+                   order=c.order)
+        if any(contains_agg(pr) for pr in node.predicates):
             # window functions can't appear in WHERE: project, then filter.
             # MATERIALIZED CTE works around duckdb's window-over-window bug
             # (unordered_map::at in 1.5.x).
@@ -310,7 +323,7 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         schema = dict(node.child.schema)
         from .expr import infer_dtype
         for name, e in node.exprs:
-            ctx = _Ctx(schema, node.child.groups)
+            ctx = _Ctx(schema, node.child.groups, windowed=True, order=c.order)
             compiled = compile_expr(e, ctx)
             # explicit projection: duckdb's binder rejects windows in
             # `* REPLACE (...)`, so spell the select list out
@@ -322,7 +335,7 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             else:
                 items = ", ".join([*(q(k) for k in [*schema, *carry]),
                                    f"{compiled} AS {q(name)}"])
-            if node.child.groups and contains_agg(e):
+            if contains_agg(e):
                 # duckdb 1.5.x binder bug: a window over a subquery whose
                 # FROM contains a CTE fails. The working shape is a
                 # MATERIALIZED CTE at the head of the window's own SELECT.
@@ -391,7 +404,8 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
                    f"FROM ({base}) t) t ORDER BY {q('__h')} LIMIT {node.n}")
             return _Compiled(f"SELECT {_cols(node.schema)} FROM ({sql}) t", None)
         part = f"PARTITION BY {', '.join(q(g) for g in groups)}" if groups else ""
-        inner = (f"SELECT *, row_number() OVER ({part}) AS {q('__rn2')}, "
+        rn_over = f"{part} ORDER BY {c.order}".strip() if c.order else part
+        inner = (f"SELECT *, row_number() OVER ({rn_over}) AS {q('__rn2')}, "
                  f"count(*) OVER ({part}) AS {q('__cnt')} FROM ({base}) t")
         if node.kind == "head":
             cond = f"{q('__rn2')} <= {node.n}"
@@ -400,12 +414,13 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         sql = f"SELECT {_cols(node.schema)} FROM ({inner}) t WHERE {cond}"
         return _Compiled(sql, None)
 
-    if isinstance(node, p.GroupBy):
+    if isinstance(node, (p.GroupBy, p.Ungroup)):
         return compile_plan(node.child)
 
     if isinstance(node, p.Summarize):
         c = compile_plan(node.child)
-        ctx = _Ctx(node.child.schema, node.child.groups, in_agg=True)
+        ctx = _Ctx(node.child.schema, node.child.groups, in_agg=True,
+                   order=c.order)
         aggs = ", ".join(f"{compile_expr(e, ctx)} AS {q(name)}"
                          for name, e in node.aggs)
         keys = list(node.child.groups)

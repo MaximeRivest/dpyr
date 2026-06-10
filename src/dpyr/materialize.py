@@ -48,11 +48,28 @@ def collect(node: p.PlanNode, *, use_cache: bool = True) -> pl.DataFrame:
         return _CACHE[key]
     if isinstance(node, p.PivotWider):
         # schema needs data: pivot in polars on either backend (DESIGN §3)
+        import warnings
+
+        import polars as pl
         child = collect(node.child, use_cache=use_cache)
         index = [c for c in node.child.schema
                  if c not in (node.names_from, node.values_from)]
-        out = child.pivot(on=node.names_from, values=node.values_from,
-                          index=index, aggregate_function="first")
+        dup_keys = index + [node.names_from]
+        n_dups = (child.group_by(dup_keys).len().filter(pl.col("len") > 1)
+                  .height) if child.height else 0
+        if n_dups:
+            warnings.warn(
+                f"pivot_wider(): values are not uniquely identified for "
+                f"{n_dups} key combination(s); keeping the first value "
+                "(dplyr would build list-columns)", stacklevel=3)
+        if not index:  # dplyr returns a single row when there are no id cols
+            child = child.with_columns(pl.lit(1).alias("__dpyr_idx"))
+            out = child.pivot(on=node.names_from, values=node.values_from,
+                              index=["__dpyr_idx"], aggregate_function="first"
+                              ).drop("__dpyr_idx")
+        else:
+            out = child.pivot(on=node.names_from, values=node.values_from,
+                              index=index, aggregate_function="first")
     else:
         kind = backend_kind(node)
         if kind == "polars":
@@ -62,6 +79,8 @@ def collect(node: p.PlanNode, *, use_cache: bool = True) -> pl.DataFrame:
             from .duckdb_backend import execute as duck_execute
             out = duck_execute(node)
     if use_cache:
+        if len(_CACHE) >= 256:  # bound memory in long sessions
+            _CACHE.pop(next(iter(_CACHE)))
         _CACHE[key] = out
     return out
 

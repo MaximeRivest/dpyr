@@ -44,3 +44,6 @@ Rows added during implementation (discovered by the oracle/fuzzer):
 | S23 | `%` modulo | floor-mod (R `%%`) | polars floor-mod; SQL trunc-mod | **R**: duckdb compiles to `((a % b) + b) % b` |
 | S24 | `is_in` with missing left value | `NA %in% xs` is FALSE | null propagates | **P**: null (filter drops it); divergence from R documented |
 | S25 | grouped `slice_head` column order | original order | polars moves keys first | **R**: compiler restores schema order |
+| S26 | `pivot_wider` duplicate keys | warns, builds list-columns | polars keeps first | **pinned**: UserWarning + keep first; a NULL in names_from becomes a column named 'null' (dplyr: 'NA') |
+| S27 | duckdb sources from different connections in one plan | n/a | undefined | **pinned**: BackendError at collect; persist one side first |
+| S28 | `arrange` before order-sensitive aggregates (`first`/`last`) | honored | engines vary | **R**: both backends honor pending sort order (ordered aggregates / framed windows on duckdb) |

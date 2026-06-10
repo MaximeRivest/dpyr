@@ -11,8 +11,8 @@ the output because it's differentially tested against dplyr.
 ---
 
 ## Epic 0 — Project foundation
-- **0.1** Repo scaffold: uv project, `pyproject.toml`, ruff, mypy/pyright,
-  pytest, pre-commit, GitHub Actions skeleton. ✅ (this commit)
+- **0.1** Repo scaffold: uv project, `pyproject.toml`, ruff, mypy,
+  pytest, GitHub Actions. ✅
 - **0.2** ✅ Reserve `dpyr` on PyPI with a 0.0.1 placeholder that
   errors helpfully on import-and-use. (`dataframe` is PyPI policy-blocked;
   see DESIGN.md §6 for the naming history.)
@@ -57,10 +57,10 @@ the output because it's differentially tested against dplyr.
   generation; fixture metadata (dplyr version).
 - **4.3** Comparison/normalization harness implementing SEMANTICS
   S6/S17/S19.
-- **4.4** CI: per-push spec tests vs committed goldens; nightly golden
-  drift job.
-- **4.5** Seed corpus: ~12 hand-written specs per MVP verb + ported dplyr
-  doc examples.
+- **4.4** CI: per-push spec tests vs committed goldens; weekly golden
+  drift job (semantic comparison in a pinned rocker container).
+- **4.5** Seed corpus: 42 hand-written specs across all MVP verbs
+  (filter is deepest at 8), derived from dplyr doc examples.
 
 ## Epic 5 — duckdb backend ✅
 - **5.1** Sources: `from_duckdb(con, table)`, `read_sql`.
@@ -87,10 +87,12 @@ the output because it's differentially tested against dplyr.
   every user mistake surfaces on the line that made it).
 
 ## Epic 8 — Hardening & release (MVP gate) ✅ (1.0.0)
-- **8.1** Port dplyr testthat regression tests for MVP verbs.
-- **8.2** Nightly Hypothesis-vs-oracle fuzzing job.
-- **8.3** Docs site: tutorial mirroring the dplyr vignette, dplyr→dataframe
-  cheat sheet, SEMANTICS as a public page.
+- **8.1** Regression coverage for MVP verbs via the oracle corpus,
+  the backend-agreement fuzzer, and the adversarial-review regression
+  suite (tests/test_review_regressions.py).
+- **8.2** Nightly backend-agreement fuzzing job (raised example count).
+- **8.3** Docs for 1.0: README tutorial + dplyr→dpyr cheat sheet;
+  SEMANTICS/DESIGN/TESTING in-repo. (Dedicated site: post-1.0.)
 - **8.4** `1.0.0` to PyPI; announce with the differential-test count as
   the headline ("passes N dplyr-generated golden tests").
 

@@ -75,7 +75,8 @@ def sources_of(node: PlanNode) -> list[Source]:
 
 def backend_kind(node: PlanNode) -> str:
     """The single backend a plan runs on; raises on mixing or missing data."""
-    kinds = {type(resolve(s.token)).__name__ for s in sources_of(node)}
+    payloads = [resolve(s.token) for s in sources_of(node)]
+    kinds = {type(p).__name__ for p in payloads}
     if not kinds:
         raise BackendError("plan has no sources")
     if len(kinds) > 1:
@@ -83,7 +84,14 @@ def backend_kind(node: PlanNode) -> str:
             "plan mixes polars and duckdb sources; collect one side first "
             "(e.g. .persist() or .to_polars()) before joining across backends"
         )
-    return "duckdb" if kinds == {"DuckPayload"} else "polars"
+    if kinds == {"DuckPayload"}:
+        cons = {id(p.con) for p in payloads if isinstance(p, DuckPayload)}
+        if len(cons) > 1:
+            raise BackendError(
+                "plan joins tables from different duckdb connections; "
+                "persist one side or use a single connection")
+        return "duckdb"
+    return "polars"
 
 
 def payload_of(node: PlanNode) -> Any:

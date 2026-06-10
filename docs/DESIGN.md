@@ -38,7 +38,7 @@ New columns via kwargs: `mutate(bmi = ...)`, `summarize(n = n())`.
 
 `col.height > 180` builds an expression tree (our IR), not a value.
 Column-typed expression classes (`NumExpr`, `StrExpr`, `BoolExpr`,
-`DtExpr`, ...) carry the appropriate methods (`.mean()`, `.str_detect()`,
+`TemporalExpr`, ...) carry the appropriate methods (`.mean()`, `.str_detect()`,
 `.year()`), so completion is type-correct.
 
 Helpers as plain functions: `n()`, `desc()`, `if_else()`, `case_when()`,
@@ -49,8 +49,8 @@ Helpers as plain functions: `n()`, `desc()`, `if_else()`, `case_when()`,
 
 Three tiers, weakest to strongest:
 
-1. **Runtime**: `DFrame.__getattr__`/`__dir__` and a frame-bound `df.c`
-   proxy populated from the live schema → Jupyter/REPL completion for free.
+1. **Runtime**: `DFrame.__dir__` and the frame-bound `df.c` proxy
+   populated from the live schema → Jupyter/REPL completion for free.
 2. **Generic typing**: `DFrame[S]` parameterized by a `Cols` schema class;
    `filter(lambda c: c.height > 180)` completes via the lambda's inferred
    parameter type.
@@ -92,7 +92,9 @@ the schema. Immediate results need collection only at display points.
   values): implicitly persist their input, compute, continue. Users never
   see the distinction.
 - **Provenance in print**: repr shows collected rows plus
-  `# source: parquet (lazy) · showing 10 of ~87 rows`.
+  `# dpyr frame · source: polars · showing 10 of ? rows` (the total
+  is exact once the result is cached; `(lazy)` appears when interactive
+  display is off).
 
 ## 4. Architecture
 

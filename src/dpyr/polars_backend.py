@@ -299,7 +299,7 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
             return out.select(list(node.schema))  # keys are moved first; undo
         return lf.head(node.n) if node.kind == "head" else lf.tail(node.n)
 
-    if isinstance(node, p.GroupBy):
+    if isinstance(node, (p.GroupBy, p.Ungroup)):
         return compile_plan(node.child)  # grouping is metadata
 
     if isinstance(node, p.Summarize):

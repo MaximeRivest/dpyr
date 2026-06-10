@@ -64,7 +64,7 @@ def test_stubgen_generates_typed_module(tmp_path: Path):
     assert "height: NumExpr" in code
     assert "name: StrExpr" in code
     assert "alive: BoolExpr" in code
-    assert "starwars: DFrame = load_starwars()" in code
+    assert "starwars: DFrame[StarwarsCols] = load_starwars()" in code
     # generated module actually imports and runs
     ns: dict = {}
     exec(compile(code, "gen", "exec"), ns)  # noqa: S102
