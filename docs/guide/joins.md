@@ -313,6 +313,11 @@ people.inner_join(from_duckdb(con, "badges_local"), on=col.pid)
 # 1 row: pid=1, Ada, gold — and the whole join runs inside con
 ```
 
+Since 1.2.0 there's a one-liner for this: `stray.to_table("badges_local",
+con=con)` lands the frame on the target connection (copied via arrow) and
+returns a frame you can join directly. See the backends guide for the full
+`to_table` / `to_view` story.
+
 Mixing a duckdb frame with an *in-memory* frame, on the other hand, just
 works (since 1.2.0). The plan runs inside duckdb, which scans the
 in-memory frame's Arrow data in place — no copy, no staging step:

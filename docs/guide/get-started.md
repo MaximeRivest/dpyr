@@ -321,7 +321,10 @@ shape: (3, 3)
 
 When you're done exploring, `.collect()` returns a polars `DataFrame`
 (`.to_pandas()` for pandas), and `.lazy()` / `options.interactive = False`
-turn off implicit execution for production pipelines.
+turn off implicit execution for production pipelines. Collecting isn't the
+only way out, though: `write_parquet()`, `to_table()`, and friends land
+results straight from the engine, and you can even mix in-memory frames with
+duckdb tables in one plan — see [Backends](backends.md) for the details.
 
 ## glimpse — the quick look
 
@@ -334,12 +337,13 @@ harvest.glimpse()
 ```
 
 ```text
-Rows: 7
-Columns: 4
-$ crop             <Str> 'tomato', 'tomato', 'kale', 'kale', 'garlic', 'garlic', 'squash'
-$ bed              <Str> 'A', 'B', 'A', 'C', 'B', 'C', 'A'
-$ kg               <Float64> 4.2, 3.1, 1.8, NA, 0.9, 1.1, 6.5
-$ days_to_maturity <Int64> 70, 75, 55, 60, 240, 240, 95
+Rows: 9
+Columns: 5
+$ crop             <Str> 'tomato', 'tomato', 'zucchini', 'zucchini', 'kale', 'kale', 'garlic', 'garlic', 'carrot'
+$ bed              <Str> 'A1', 'B2', 'A1', 'C3', 'B2', 'C3', 'A1', 'B2', 'C3'
+$ kg               <Float64> 12.4, 9.1, 18.0, 22.5, 3.2, NA, 4.0, 4.4, 7.5
+$ price_per_kg     <Float64> 5.5, 5.5, 3.0, 3.0, 8.0, 8.0, 12.0, 12.0, 4.25
+$ days_to_maturity <Int64> 78, 81, 52, 55, 60, 62, 240, 240, 70
 ```
 
 It returns the frame, so it slots into the middle of a chain while you

@@ -112,8 +112,13 @@ logical plan + expression IR  ←— schema inference/validation lives here
   grouped ordering — see SEMANTICS.md) are pinned in the IR, and each
   backend compiler is responsible for complying, inserting casts/sorts
   where the engine's defaults differ.
-- Backend chosen at the source: `read_parquet/read_csv/from_polars/
-  from_pandas` → polars; `from_duckdb(con, "tbl")` / `read_sql` → duckdb.
+- Sources carry a *home* backend (`read_parquet/read_csv/from_polars/
+  from_pandas` → polars; `from_duckdb(con, "tbl")` / `read_sql` → duckdb),
+  but the engine is picked automatically at collect time: if any duckdb
+  table participates in the plan, the whole plan runs inside duckdb,
+  scanning in-memory frames via arrow in place (zero copy); otherwise
+  polars runs it. `collect(engine=...)` overrides. Two *different* duckdb
+  connections in one plan still raise.
 - `group_by` returns `GroupedDFrame` (separate type → separate completion
   surface), auto-ungrouping after `summarize`, matching dplyr.
 
