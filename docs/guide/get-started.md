@@ -19,7 +19,7 @@ uv add dpyr
 We'll build a frame from plain Python lists so this page is fully
 self-contained — but `read()` takes far more than dicts: parquet, CSV,
 JSON, Excel, duckdb and SQLite files, URLs, pandas frames, Hugging Face
-datasets... the whole tour is in [Reading & writing](reading.md). Here's
+datasets... the whole tour is in [Reading & writing](reading/index.md). Here's
 a season of harvest records from a small market garden — one row per
 crop picked from a bed:
 
@@ -363,7 +363,7 @@ debug.
 - [Column-wise operations](column-wise.md) — `across()` with tidyselect
 - [Reshaping](reshaping.md) — `pivot_longer`/`pivot_wider`, `separate`,
   `unite`
-- [Reading & writing](reading.md) — every format and source `read()`
+- [Reading & writing](reading/index.md) — every format and source `read()`
   and `write()` understand
 - [Backends](backends.md) — polars vs duckdb, `persist()`, lazy mode,
   caching, and ML data (Hugging Face datasets, numpy, torch, jax)

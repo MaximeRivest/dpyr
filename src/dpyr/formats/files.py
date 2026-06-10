@@ -151,6 +151,14 @@ file_format("arrow", (".arrow", ".feather", ".ipc"), _read_ipc, _write_ipc)
 
 # -- excel (optional extra: dpyr[excel]) -------------------------------------------
 
+def _xlsx_sheet_names(path: str) -> list[str] | None:
+    try:
+        import fastexcel
+        return list(fastexcel.read_excel(path).sheet_names)
+    except Exception:
+        return None
+
+
 def _read_xlsx(path: str, table: str | None) -> DFrame:
     import polars as pl
     try:
@@ -159,6 +167,14 @@ def _read_xlsx(path: str, table: str | None) -> DFrame:
         raise DpyrError(
             "reading .xlsx needs the excel extra: pip install 'dpyr[excel]'"
         ) from err
+    except ValueError as err:
+        if table is not None and "sheet" in str(err):
+            sheets = _xlsx_sheet_names(path)
+            listed = (f"; sheets in this workbook: {sheets}"
+                      if sheets else "")
+            raise DpyrError(
+                f"no sheet named {table!r} in {path!r}{listed}") from err
+        raise
     return _scan_source("xlsx", df.lazy(), path)
 
 

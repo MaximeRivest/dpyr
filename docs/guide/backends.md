@@ -208,8 +208,8 @@ In-memory frames can land too — give `to_table()` a connection
 ## Opening files the readr way
 
 Two functions cover all file IO: `read(path)` and `df.write(path)`, both
-dispatching on the extension — `.parquet`/`.pq`, `.csv`,
-`.arrow`/`.feather`/`.ipc`, and `.db`/`.duckdb`/`.ddb`. A duckdb file
+dispatching on the extension — every format from CSV to Excel to sqlite
+has [its own page in the reading guide](reading/index.md). A duckdb file
 needs a table name when writing, and opens as a catalog when reading:
 
 ```python

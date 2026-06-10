@@ -34,7 +34,16 @@ nav:
   - Home: index.md
   - Guides:
       - Get started: guide/get-started.md
-      - Reading & writing: guide/reading.md
+      - Reading & writing:
+          - Overview: guide/reading/index.md
+          - CSV & TSV: guide/reading/csv.md
+          - Parquet: guide/reading/parquet.md
+          - Excel: guide/reading/excel.md
+          - JSON: guide/reading/json.md
+          - Arrow IPC: guide/reading/arrow.md
+          - Databases: guide/reading/databases.md
+          - Remote data: guide/reading/remote.md
+          - In-memory objects: guide/reading/in-memory.md
       - Grouped data: guide/grouped-data.md
       - Joins: guide/joins.md
       - Window functions: guide/window-functions.md

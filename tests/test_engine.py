@@ -316,6 +316,16 @@ def test_new_formats_roundtrip(tmp_path):
         assert back.collect().to_dicts() == f.collect().to_dicts(), ext
 
 
+def test_xlsx_named_sheet_and_bad_sheet_error(tmp_path):
+    pytest.importorskip("fastexcel")
+    f = d.from_dict({"g": ["a", "b"], "x": [1.5, 2.5]})
+    p = str(tmp_path / "t.xlsx")
+    f.write(p, "plots")
+    assert d.read(p, "plots").collect().to_dicts() == f.collect().to_dicts()
+    with pytest.raises(d.DpyrError, match=r"no sheet named 'oops'.*'plots'"):
+        d.read(p, "oops")
+
+
 def test_csv_gz_reads(tmp_path):
     import gzip
     p = str(tmp_path / "t.csv.gz")
