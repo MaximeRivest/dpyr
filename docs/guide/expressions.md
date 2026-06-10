@@ -73,7 +73,7 @@ print(plants)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 5 of 5 rows
+# dpyr dataframe · source: polars · showing 5 of 5 rows
 shape: (5, 5)
 ┌───────────────┬────────────┬────────────┬──────┬──────────┐
 │ plant         ┆ family     ┆ sown       ┆ rows ┆ yield_kg │
@@ -197,7 +197,7 @@ print(graded.select(col.plant, col.scale, col.grade, col.filled, col.capped))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 5 of 5 rows
+# dpyr dataframe · source: polars · showing 5 of 5 rows
 shape: (5, 5)
 ┌───────────────┬───────┬───────────┬────────┬────────┐
 │ plant         ┆ scale ┆ grade     ┆ filled ┆ capped │
@@ -254,7 +254,7 @@ print(sales.mutate(
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 3 of 3 rows
+# dpyr dataframe · source: duckdb · showing 3 of 3 rows
 shape: (3, 4)
 ┌─────────────┬──────────┬───────────┬─────────┐
 │ plant       ┆ yield_kg ┆ grade     ┆ missing │

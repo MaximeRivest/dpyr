@@ -43,7 +43,7 @@ customers.inner_join(orders, on=col.cust_id)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 3 of 3 rows
+# dpyr dataframe · source: polars · showing 3 of 3 rows
 shape: (3, 5)
 ┌─────────┬───────┬──────────┬──────────┬────────┐
 │ cust_id ┆ name  ┆ city     ┆ item     ┆ total  │
@@ -273,7 +273,7 @@ people.inner_join(badges, on=col.pid).arrange(col.pid, col.badge)
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 3 of 3 rows
+# dpyr dataframe · source: duckdb · showing 3 of 3 rows
 shape: (3, 3)
 ┌─────┬───────┬────────┐
 │ pid ┆ name  ┆ badge  │
@@ -296,7 +296,7 @@ people.inner_join(scores, on=col.pid).arrange(col.pid)
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 2 of 2 rows
+# dpyr dataframe · source: duckdb · showing 2 of 2 rows
 shape: (2, 3)
 ┌─────┬───────┬───────┐
 │ pid ┆ name  ┆ score │

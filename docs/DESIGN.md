@@ -92,7 +92,7 @@ the schema. Immediate results need collection only at display points.
   values): implicitly persist their input, compute, continue. Users never
   see the distinction.
 - **Provenance in print**: repr shows collected rows plus
-  `# dpyr frame · source: polars · showing 10 of ? rows` (the total
+  `# dpyr dataframe · source: polars · showing 10 of ? rows` (the total
   is exact once the result is cached; `(lazy)` appears when interactive
   display is off).
 

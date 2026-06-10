@@ -56,7 +56,7 @@ print(penguins.select(starts_with("bill")))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 6 of 6 rows
+# dpyr dataframe · source: polars · showing 6 of 6 rows
 shape: (6, 2)
 ┌────────────────┬───────────────┐
 │ bill_length_mm ┆ bill_depth_mm │
@@ -142,7 +142,7 @@ print(penguins.summarize(across(where(is_numeric), "mean")))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 1 of 1 rows
+# dpyr dataframe · source: polars · showing 1 of 1 rows
 shape: (1, 4)
 ┌────────────────┬───────────────┬───────────────────┬────────┐
 │ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ year   │
@@ -190,7 +190,7 @@ print(penguins.summarize(across(
 ```
 
 ```text
-# dpyr frame · source: polars · showing 1 of 1 rows
+# dpyr dataframe · source: polars · showing 1 of 1 rows
 shape: (1, 4)
 ┌─────────────────────┬───────────────────────┬────────────────────┬──────────────────────┐
 │ bill_length_mm_mean ┆ bill_length_mm_spread ┆ bill_depth_mm_mean ┆ bill_depth_mm_spread │
@@ -225,7 +225,7 @@ print(penguins.mutate(across(ends_with("_mm"), lambda c: c / 25.4, names="{col}_
 ```
 
 ```text
-# dpyr frame · source: polars · showing 6 of 6 rows
+# dpyr dataframe · source: polars · showing 6 of 6 rows
 shape: (6, 6)
 ┌───────────┬───────────┬────────────────┬───────────────┬───────────────────┬───────┐
 │ species   ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ year  │
@@ -255,7 +255,7 @@ print(penguins.group_by(col.year).summarize(across(where(is_numeric), "mean"), n
 ```
 
 ```text
-# dpyr frame · source: polars · showing 2 of 2 rows
+# dpyr dataframe · source: polars · showing 2 of 2 rows
 shape: (2, 5)
 ┌──────┬────────────────┬───────────────┬───────────────────┬─────┐
 │ year ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ n   │
@@ -282,7 +282,7 @@ print(centered)
 ```
 
 ```text
-# dpyr frame · groups: species · source: polars · showing 6 of 6 rows
+# dpyr dataframe · groups: species · source: polars · showing 6 of 6 rows
 shape: (6, 3)
 ┌───────────┬─────────────────────────┬────────────────────────┐
 │ species   ┆ bill_length_mm_centered ┆ bill_depth_mm_centered │
@@ -326,7 +326,7 @@ print(tbl.group_by(col.species).summarize(across(starts_with("bill"), "mean"), n
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 3 of 3 rows
+# dpyr dataframe · source: duckdb · showing 3 of 3 rows
 shape: (3, 4)
 ┌───────────┬────────────────┬───────────────┬─────┐
 │ species   ┆ bill_length_mm ┆ bill_depth_mm ┆ n   │

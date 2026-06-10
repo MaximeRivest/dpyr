@@ -77,7 +77,7 @@ def collect(node: p.PlanNode, *, use_cache: bool = True,
             from .backend import BackendError
             raise BackendError(
                 "engine='polars' cannot read duckdb-resident tables; "
-                "duckdb can read in-memory frames, not vice versa")
+                "duckdb can read in-memory dataframes, not vice versa")
         if kind == "polars":
             from .polars_backend import compile_plan
             out = compile_plan(node).collect()

@@ -513,7 +513,7 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         base = f"{c.sql} ORDER BY {c.order}" if c.order else c.sql
         if node.kind == "sample":
             if groups:
-                raise DpyrError("slice_sample() on grouped frames is not supported yet")
+                raise DpyrError("slice_sample() on grouped dataframes is not supported yet")
             seed = node.seed if node.seed is not None else 0
             h, ix = _uniq("h"), _uniq("ix")
             # LCG-mix sampling, identical on both engines (S33)

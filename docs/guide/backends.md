@@ -29,7 +29,7 @@ print(sales)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 6 of 6 rows
+# dpyr dataframe · source: polars · showing 6 of 6 rows
 shape: (6, 4)
 ┌───────────┬───────┬───────┬───────┐
 │ city      ┆ month ┆ units ┆ price │
@@ -81,7 +81,7 @@ print(revenue)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 3 of 3 rows
+# dpyr dataframe · source: polars · showing 3 of 3 rows
 shape: (3, 2)
 ┌───────────┬───────┐
 │ city      ┆ total │
@@ -128,7 +128,7 @@ print(feb.schema)
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 3 of 3 rows
+# dpyr dataframe · source: duckdb · showing 3 of 3 rows
 shape: (3, 3)
 ┌───────────┬───────┬──────────┐
 │ city      ┆ trips ┆ total_km │
@@ -363,9 +363,9 @@ dpyr.options.interactive = True
 ```
 
 ```text
-# dpyr frame · source: duckdb (lazy)
+# dpyr dataframe · source: duckdb (lazy)
 # columns: city <Str>, trips <Int64>, total_km <Float64>
-# dpyr frame · source: duckdb (lazy)
+# dpyr dataframe · source: duckdb (lazy)
 # columns: city <Str>, trips <Int64>, total_km <Float64>
 ```
 
@@ -382,7 +382,7 @@ print(wide)
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 4 of 4 rows
+# dpyr dataframe · source: duckdb · showing 4 of 4 rows
 shape: (4, 3)
 ┌───────────┬──────┬──────┐
 │ city      ┆ 1    ┆ 2    │

@@ -36,7 +36,7 @@ print(long)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 9 of 9 rows
+# dpyr dataframe · source: polars · showing 9 of 9 rows
 shape: (9, 3)
 ┌─────────┬──────────┬───────┐
 │ country ┆ year     ┆ pop   │
@@ -331,7 +331,7 @@ print(sales_long.pivot_wider(names_from=col.quarter, values_from=col.units))
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 4 of 4 rows
+# dpyr dataframe · source: duckdb · showing 4 of 4 rows
 shape: (4, 3)
 ┌────────┬─────────┬───────┐
 │ region ┆ quarter ┆ units │
@@ -341,7 +341,7 @@ shape: (4, 3)
 │ south  ┆ q1      ┆ 7     │
 │ south  ┆ q2      ┆ 9     │
 └────────┴─────────┴───────┘
-# dpyr frame · source: duckdb · showing 2 of 2 rows
+# dpyr dataframe · source: duckdb · showing 2 of 2 rows
 shape: (2, 3)
 ┌────────┬─────┬─────┐
 │ region ┆ q1  ┆ q2  │

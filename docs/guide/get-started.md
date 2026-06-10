@@ -38,7 +38,7 @@ print(harvest)
 ```
 
 ```text
-# dpyr frame · source: polars · showing 9 of 9 rows
+# dpyr dataframe · source: polars · showing 9 of 9 rows
 shape: (9, 5)
 ┌──────────┬─────┬──────┬──────────────┬──────────────────┐
 │ crop     ┆ bed ┆ kg   ┆ price_per_kg ┆ days_to_maturity │
@@ -97,7 +97,7 @@ print(harvest.filter(col.kg > 5, col.price_per_kg < 6))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 5 of 5 rows
+# dpyr dataframe · source: polars · showing 5 of 5 rows
 shape: (5, 5)
 ┌──────────┬─────┬──────┬──────────────┬──────────────────┐
 │ crop     ┆ bed ┆ kg   ┆ price_per_kg ┆ days_to_maturity │
@@ -128,7 +128,7 @@ print(harvest.arrange(desc(col.kg)).slice_tail(3))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 3 of 3 rows
+# dpyr dataframe · source: polars · showing 3 of 3 rows
 shape: (3, 5)
 ┌────────┬─────┬──────┬──────────────┬──────────────────┐
 │ crop   ┆ bed ┆ kg   ┆ price_per_kg ┆ days_to_maturity │
@@ -156,7 +156,7 @@ print(harvest.slice_max(col.days_to_maturity, n=1))   # garlic ties at 240
 ```
 
 ```text
-# dpyr frame · source: polars · showing 2 of 2 rows
+# dpyr dataframe · source: polars · showing 2 of 2 rows
 shape: (2, 5)
 ┌────────┬─────┬─────┬──────────────┬──────────────────┐
 │ crop   ┆ bed ┆ kg  ┆ price_per_kg ┆ days_to_maturity │
@@ -209,7 +209,7 @@ print(priced.select(col.crop, col.bed, col.revenue, col.revenue_per_day).slice_h
 ```
 
 ```text
-# dpyr frame · source: polars · showing 3 of 3 rows
+# dpyr dataframe · source: polars · showing 3 of 3 rows
 shape: (3, 4)
 ┌──────────┬─────┬─────────┬─────────────────┐
 │ crop     ┆ bed ┆ revenue ┆ revenue_per_day │
@@ -246,7 +246,7 @@ print(
 ```
 
 ```text
-# dpyr frame · source: polars · showing 5 of 5 rows
+# dpyr dataframe · source: polars · showing 5 of 5 rows
 shape: (5, 4)
 ┌──────────┬───────┬──────────┬─────────────┐
 │ crop     ┆ picks ┆ total_kg ┆ avg_revenue │
@@ -268,7 +268,7 @@ print(harvest.count(col.bed))
 ```
 
 ```text
-# dpyr frame · source: polars · showing 3 of 3 rows
+# dpyr dataframe · source: polars · showing 3 of 3 rows
 shape: (3, 2)
 ┌─────┬─────┐
 │ bed ┆ n   │
@@ -309,7 +309,7 @@ print(
 ```
 
 ```text
-# dpyr frame · source: duckdb · showing 3 of 3 rows
+# dpyr dataframe · source: duckdb · showing 3 of 3 rows
 shape: (3, 3)
 ┌──────────┬───────┬──────────┐
 │ crop     ┆ picks ┆ total_kg │

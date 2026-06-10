@@ -27,7 +27,7 @@ print(type(g.ungroup()).__name__)
 
 ```text
 GroupedDFrame ('region',)
-# dpyr frame · groups: region · source: polars · showing 8 of 8 rows
+# dpyr dataframe · groups: region · source: polars · showing 8 of 8 rows
 DFrame
 ```
 

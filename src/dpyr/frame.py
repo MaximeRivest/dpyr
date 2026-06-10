@@ -233,7 +233,7 @@ class DFrame(Generic[S]):
 
     def __repr__(self) -> str:
         kind = self._provenance()
-        head = f"# dpyr frame · source: {kind}"
+        head = f"# dpyr dataframe · source: {kind}"
         if kind == "schema-only" or not (options.interactive and self._interactive):
             cols = ", ".join(f"{k} <{v!r}>" for k, v in self._plan.schema.items())
             return f"{head} (lazy)\n# columns: {cols}"
@@ -549,7 +549,7 @@ class DFrame(Generic[S]):
     def _join(self, other: DFrame, how: p.JoinHow, on: ColRef | list[ColRef],
               suffix: tuple[str, str], na_matches: Literal["na", "never"]) -> DFrame:
         if isinstance(other, GroupedDFrame):
-            raise GroupError("joining a grouped frame is not supported; ungroup() it first")
+            raise GroupError("joining a grouped dataframe is not supported; ungroup() it first")
         refs = on if isinstance(on, list) else [on]
         keys = tuple(_name(r, "join on=") for r in refs)
         return self._spawn(p.Join(self._plan, other._plan, how, keys, suffix, na_matches))
@@ -612,7 +612,7 @@ class GroupedDFrame(DFrame[S]):
 
     def __repr__(self) -> str:
         base = super().__repr__()
-        return base.replace("# dpyr frame", f"# dpyr frame · groups: {', '.join(self.groups)}")
+        return base.replace("# dpyr dataframe", f"# dpyr dataframe · groups: {', '.join(self.groups)}")
 
     def ungroup(self) -> DFrame:
         out: DFrame = DFrame(p.Ungroup(self._plan))

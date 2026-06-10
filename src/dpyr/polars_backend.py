@@ -328,7 +328,7 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
         lf = compile_plan(node.child)
         if node.kind == "sample":
             if groups:
-                raise DpyrError("slice_sample() on grouped frames is not supported yet")
+                raise DpyrError("slice_sample() on grouped dataframes is not supported yet")
             # LCG-mix sampling, identical on both engines (S33); the seed
             # is mixed before multiplying so it changes the permutation
             seed = node.seed if node.seed is not None else 0
