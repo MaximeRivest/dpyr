@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly oracle drift check
 
 jobs:
   test:
@@ -20,3 +23,21 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run mypy src/dpyr
       - run: uv run pytest -q
+        env:
+          DPYR_REQUIRE_GOLDENS: "1"
+
+  oracle-drift:
+    # regenerates goldens with real dplyr and fails if any committed golden
+    # drifted (TESTING.md layer 1)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container: rocker/tidyverse:4.4.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: R -e 'install.packages(c("arrow", "yaml"), repos = "https://cloud.r-project.org")'
+      - run: Rscript oracle/run_specs.R tests/specs /tmp/golden_fresh
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --group dev
+      - run: uv run pytest tests/test_oracle.py -q
+        env:
+          DPYR_GOLDEN_DIR: /tmp/golden_fresh

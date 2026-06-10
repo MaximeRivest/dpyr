@@ -109,6 +109,22 @@ def _cte_name() -> str:
     return f"__dpyr_w{next(_cte_counter)}"
 
 
+_rn_counter = itertools.count()
+
+
+def _rn_name() -> str:
+    return f"__rn{next(_rn_counter)}"
+
+
+def _order_hidden_col(order: str | None) -> str | None:
+    """The hidden row-number column an ORDER BY clause relies on, if any."""
+    if not order:
+        return None
+    import re
+    m = re.search(r'"(__rn\d+)"', order)
+    return m.group(1) if m else None
+
+
 @dataclass
 class _Ctx:
     schema: dict[str, DType]
@@ -298,12 +314,13 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             compiled = compile_expr(e, ctx)
             # explicit projection: duckdb's binder rejects windows in
             # `* REPLACE (...)`, so spell the select list out
+            carry = [hidden] if (hidden := _order_hidden_col(c.order)) else []
             if name in schema:
                 items = ", ".join(
                     f"{compiled} AS {q(name)}" if k == name else q(k)
-                    for k in schema)
+                    for k in [*schema, *carry])
             else:
-                items = ", ".join([*(q(k) for k in schema),
+                items = ", ".join([*(q(k) for k in [*schema, *carry]),
                                    f"{compiled} AS {q(name)}"])
             if node.child.groups and contains_agg(e):
                 # duckdb 1.5.x binder bug: a window over a subquery whose
@@ -319,7 +336,10 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
 
     if isinstance(node, p.Select):
         c = compile_plan(node.child)
-        return _Compiled(f"SELECT {_cols(node.schema)} FROM ({c.sql}) t", c.order)
+        cols = _cols(node.schema)
+        if (hidden := _order_hidden_col(c.order)):
+            cols += f", {q(hidden)}"
+        return _Compiled(f"SELECT {cols} FROM ({c.sql}) t", c.order)
 
     if isinstance(node, p.Rename):
         c = compile_plan(node.child)
@@ -327,6 +347,8 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         items = ", ".join(
             f"{q(old)} AS {q(lookup[old])}" if old in lookup else q(old)
             for old in node.child.schema)
+        if (hidden := _order_hidden_col(c.order)):
+            items += f", {q(hidden)}"
         return _Compiled(f"SELECT {items} FROM ({c.sql}) t", c.order)
 
     if isinstance(node, p.Arrange):
@@ -337,11 +359,12 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
             key_expr = k.operand if isinstance(k, Desc) else k
             direction = "DESC" if isinstance(k, Desc) else "ASC"
             parts.append(f"{compile_expr(key_expr, ctx)} {direction} NULLS LAST")
-        # stable: tiebreak on input row order (S3)
-        inner_sql = (f"SELECT *, row_number() OVER () AS {q('__rn')} "
-                     f"FROM ({c.sql}) t")
-        order = ", ".join(parts) + f", {q('__rn')} ASC"
-        sql = f"SELECT {_cols(node.schema)} FROM ({inner_sql}) t"
+        # stable: tiebreak on input row order (S3). The rn column stays in
+        # the projection so later wrapping nodes can carry it; execute()
+        # projects the plan schema at the end.
+        rn = _rn_name()
+        sql = f"SELECT *, row_number() OVER () AS {q(rn)} FROM ({c.sql}) t"
+        order = ", ".join(parts) + f", {q(rn)} ASC"
         return _Compiled(sql, order)
 
     if isinstance(node, p.Distinct):

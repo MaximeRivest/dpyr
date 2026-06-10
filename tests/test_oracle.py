@@ -44,7 +44,7 @@ from conftest import make_duckdb, make_polars
 
 HERE = Path(__file__).parent
 SPEC_DIR = HERE / "specs"
-GOLDEN_DIR = HERE / "golden"
+GOLDEN_DIR = Path(os.environ.get("DPYR_GOLDEN_DIR", HERE / "golden"))
 
 PY_TYPES = {"int": pl.Int64, "float": pl.Float64, "str": pl.String,
             "bool": pl.Boolean, "date": pl.Date}

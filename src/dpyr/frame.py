@@ -117,7 +117,8 @@ class DFrame:
         return [*super().__dir__(), *self._plan.schema]
 
     def _spawn(self, node: p.PlanNode) -> DFrame:
-        out = DFrame(node)
+        # dispatch on grouping so every verb works on grouped frames too
+        out = GroupedDFrame(node) if node.groups else DFrame(node)
         out._interactive = self._interactive
         return out
 
@@ -427,8 +428,8 @@ def read_csv(path: str) -> DFrame:
 
 
 def from_duckdb(con: duckdb.DuckDBPyConnection, table: str) -> DFrame:
-    from .duckdb_backend import schema_from_duckdb
-    quoted = f'"{table}"'
+    from .duckdb_backend import q, schema_from_duckdb
+    quoted = q(table)
     schema = schema_from_duckdb(con, quoted)
     token = register(DuckPayload(con, quoted), hint=f"duck:{table}")
     return DFrame(p.Source(table, tuple(schema.items()), token))

@@ -31,7 +31,7 @@ the output because it's differentially tested against dplyr.
   (for IR snapshot tests).
 - Tests: unit + Hypothesis property 1 (schema soundness).
 
-## Epic 2 — polars backend
+## Epic 2 — polars backend ✅
 - **2.1** Sources: `read_parquet`, `read_csv`, `from_polars`, `from_pandas`.
 - **2.2** Compile IR → polars LazyFrame for: filter, mutate, select,
   rename, arrange, distinct, slices.
@@ -41,7 +41,7 @@ the output because it's differentially tested against dplyr.
 - **2.5** Semantics shims: sort stability/NA position (S3), int division
   (S4), counts dtype (S13), division by zero (S14).
 
-## Epic 3 — Materialization model (the UX)
+## Epic 3 — Materialization model (the UX) ✅
 - **3.1** Display-eager boundaries: `__repr__`/`_repr_html_` with capped
   preview + provenance line, `len`, `.shape`, iteration, `.to_polars()`,
   `.to_pandas()`, `.pull()`.
@@ -51,7 +51,7 @@ the output because it's differentially tested against dplyr.
   pivot_wider).
 - Tests: metamorphic laws on persist/collect/repr equivalence.
 
-## Epic 4 — Oracle harness (start early, runs forever)
+## Epic 4 — Oracle harness (start early, runs forever) ✅
 - **4.1** YAML spec format + Python spec runner.
 - **4.2** `oracle/run_specs.R` + pinned rocker container; golden parquet
   generation; fixture metadata (dplyr version).
@@ -62,14 +62,14 @@ the output because it's differentially tested against dplyr.
 - **4.5** Seed corpus: ~12 hand-written specs per MVP verb + ported dplyr
   doc examples.
 
-## Epic 5 — duckdb backend
+## Epic 5 — duckdb backend ✅
 - **5.1** Sources: `from_duckdb(con, table)`, `read_sql`.
 - **5.2** IR → SQL compiler for the Epic-2 verb set, with semantics shims
   (casts, ORDER BY NULLS LAST, etc.).
 - **5.3** `persist()` as `CREATE TEMP TABLE`.
 - **5.4** Hypothesis property 2: backend agreement, in CI on every push.
 
-## Epic 6 — tidyselect, across, reshaping
+## Epic 6 — tidyselect, across, reshaping ✅
 - **6.1** tidyselect: `starts_with/ends_with/contains/matches/where/
   everything`, negation; works in `select`, `rename`, `distinct`.
 - **6.2** `across()` in mutate/summarize with `names=` templating.
@@ -77,7 +77,7 @@ the output because it's differentially tested against dplyr.
 - **6.4** `GroupedDFrame` type with its own completion surface; grouped
   filter/mutate window semantics.
 
-## Epic 7 — Autocompletion & developer experience
+## Epic 7 — Autocompletion & developer experience ✅
 - **7.1** Runtime completion: `__dir__` from live schema; frame-bound
   `df.c` proxy.
 - **7.2** `DFrame[S]` generic typing + lambda-style `filter(lambda c: ...)`.
@@ -86,12 +86,12 @@ the output because it's differentially tested against dplyr.
 - **7.4** Error message polish pass (the "feels eager" acceptance test:
   every user mistake surfaces on the line that made it).
 
-## Epic 8 — Hardening & release (MVP gate)
+## Epic 8 — Hardening & release (MVP gate) ✅ (1.0.0)
 - **8.1** Port dplyr testthat regression tests for MVP verbs.
 - **8.2** Nightly Hypothesis-vs-oracle fuzzing job.
 - **8.3** Docs site: tutorial mirroring the dplyr vignette, dplyr→dataframe
   cheat sheet, SEMANTICS as a public page.
-- **8.4** `0.1.0` to PyPI; announce with the differential-test count as
+- **8.4** `1.0.0` to PyPI; announce with the differential-test count as
   the headline ("passes N dplyr-generated golden tests").
 
 ## Post-MVP (parking lot)

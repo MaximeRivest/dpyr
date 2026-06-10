@@ -294,3 +294,12 @@ def test_pull_and_getitem(make):
     f = make(STARWARS)
     assert f.pull(col.name)[:2] == ["Luke", "Leia"]
     assert f["height"][0] == 172
+
+
+def test_grouped_rename_distinct_count(make):
+    g = make(STARWARS).group_by(col.species)
+    renamed = g.rename(kg=col.mass)
+    assert "kg" in renamed.columns and renamed.groups == ("species",)
+    dd = g.distinct(col.name)
+    assert dd.columns == ["species", "name"]
+    assert len(dd.ungroup().collect()) == 6
