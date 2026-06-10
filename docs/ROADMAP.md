@@ -86,7 +86,7 @@ the output because it's differentially tested against dplyr.
 - **7.4** Error message polish pass (the "feels eager" acceptance test:
   every user mistake surfaces on the line that made it).
 
-## Epic 8 — Hardening & release (MVP gate) ✅ (1.0.0)
+## Epic 8 — Hardening & release (MVP gate) ✅ (1.0.0 published 2026-06-10)
 - **8.1** Regression coverage for MVP verbs via the oracle corpus,
   the backend-agreement fuzzer, and the adversarial-review regression
   suite (tests/test_review_regressions.py).
