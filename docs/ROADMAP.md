@@ -112,6 +112,13 @@ fully in-engine (CREATE ... AS <sql>); write_parquet via in-engine COPY;
 readr-style IO (read_duckdb catalog object, read_ipc memory-mapped,
 write_duckdb, glimpse()); slice_sample unified across engines (S33).
 
+## 1.3.0 ✅ (published 2026-06-10)
+One reader, one writer: read(path) and df.write(path) dispatch on file
+extension (.parquet/.pq, .csv, .arrow/.feather/.ipc, .db/.duckdb/.ddb —
+duckdb files open as a catalog, write to a named table). write_csv added
+(in-engine COPY on duckdb). Format-specific functions remain as explicit
+escape hatches.
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres

@@ -356,6 +356,64 @@ class DFrame(Generic[S]):
         except Exception:
             self.collect().write_parquet(path)
 
+    def write(self, path: str, table: str | None = None) -> DFrame | None:
+        """The one writer: dispatches on file extension.
+
+            df.write("out.parquet")          # in-engine COPY on duckdb
+            df.write("out.csv")
+            df.write("out.arrow")            # arrow IPC
+            df.write("shop.db", "orders")    # a table inside a duckdb file
+
+        Returns the bound frame for duckdb destinations, None otherwise.
+        """
+        import pathlib
+        suffix = pathlib.PurePath(path).suffix.lower()
+        from .io import _DB_SUFFIXES, _IPC_SUFFIXES
+        if suffix in _DB_SUFFIXES:
+            if table is None:
+                raise BackendError(
+                    f"write({path!r}) needs a table name: "
+                    f"write({path!r}, 'orders')")
+            return self.write_duckdb(path, table)
+        if table is not None:
+            raise BackendError(
+                f"write(table=...) only applies to duckdb files, not {suffix!r}")
+        if suffix in (".parquet", ".pq"):
+            self.write_parquet(path)
+            return None
+        if suffix == ".csv":
+            self.write_csv(path)
+            return None
+        if suffix in _IPC_SUFFIXES:
+            self.write_ipc(path)
+            return None
+        raise BackendError(
+            f"write() can't infer a format from {path!r}; supported: "
+            ".parquet/.pq, .csv, .arrow/.feather/.ipc, .db/.duckdb/.ddb")
+
+    def write_csv(self, path: str) -> None:
+        """Write the result as CSV (in-engine COPY on duckdb)."""
+        from .backend import backend_kind
+        from .materialize import _plan_needs_python
+        if (backend_kind(self._plan) == "duckdb"
+                and not _plan_needs_python(self._plan)):
+            from .duckdb_backend import final_sql, register_bridges
+            con = self._duck_landing(None)
+            escaped = path.replace("'", "''")
+            bridged = register_bridges(con, self._plan)
+            try:
+                con.execute(f"COPY ({final_sql(self._plan)}) TO '{escaped}' "
+                            "(FORMAT CSV, HEADER)")
+            finally:
+                for b in bridged:
+                    con.unregister(b)
+            return
+        try:
+            from .polars_backend import compile_plan as _pc
+            _pc(self._plan).sink_csv(path)
+        except Exception:
+            self.collect().write_csv(path)
+
     def write_ipc(self, path: str) -> None:
         """Write the result as an Arrow IPC (Feather v2) file."""
         from .backend import backend_kind

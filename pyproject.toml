@@ -1,6 +1,6 @@
 [project]
 name = "dpyr"
-version = "1.2.0"
+version = "1.3.0"
 description = "dplyr for Python: tidy piped verbs over polars and duckdb, with real autocompletion and dplyr-verified semantics."
 readme = "README.md"
 requires-python = ">=3.10"

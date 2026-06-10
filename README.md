@@ -10,9 +10,10 @@ pip install dpyr        # or: uv add dpyr
 ```
 
 ```python
-from dpyr import read_parquet, col, n, desc
+from dpyr import read, col, n, desc
 
-starwars = read_parquet("starwars.parquet")
+starwars = read("starwars.parquet")   # read() dispatches on extension:
+                                      # .parquet, .csv, .arrow, .db, ...
 
 (
     starwars
@@ -89,11 +90,11 @@ the dplyr behaviors, deliberately.
 ## The database is a destination, not just a source
 
 ```python
-db = dpyr.read_duckdb("warehouse.db")     # catalog object: db.tables, db.orders
+db = dpyr.read("warehouse.db")            # catalog object: db.tables, db.orders
 gold = db.orders.group_by(col.region).summarize(rev = col.amount.sum())
 gold.to_table("gold_revenue")             # CREATE TABLE AS <sql>, fully in-engine
 gold.to_view("gold_live")                 # the lazy plan as a named view
-gold.write_parquet("gold.parquet")        # in-engine COPY
+gold.write("gold.parquet")                # in-engine COPY (extension dispatch)
 mem = from_dict({"region": ["east"], "target": [1000.0]})
 gold.inner_join(mem, on = col.region)     # in-memory frames bridge into duckdb
                                           # automatically (arrow, zero-copy)

@@ -206,26 +206,33 @@ In-memory frames can land too — give `to_table()` a connection
 (`to_table("name", con=con)`), or skip connections entirely with
 `write_duckdb(path, table)`, which creates the database file if needed.
 
-## Opening a database the readr way
+## Opening files the readr way
 
-For files, you never need a connection object at all. `read_duckdb()`
-opens a database the way `read_csv` opens a CSV — the catalog comes back
-as an object whose attributes are frames:
+Two functions cover all file IO: `read(path)` and `df.write(path)`, both
+dispatching on the extension — `.parquet`/`.pq`, `.csv`,
+`.arrow`/`.feather`/`.ipc`, and `.db`/`.duckdb`/`.ddb`. A duckdb file
+needs a table name when writing, and opens as a catalog when reading:
 
 ```python
-gold.write_duckdb("/tmp/shop.db", "gold_cities")
+from dpyr import read
 
-db = dpyr.read_duckdb("/tmp/shop.db")
+gold.write("/tmp/shop.db", "gold_cities")  # a table inside a duckdb file
+
+db = read("/tmp/shop.db")                  # the whole catalog
 print(db.tables)
 city_frame = db.gold_cities                # a lazy frame, schema known
-one_table  = dpyr.read_duckdb("/tmp/shop.db", "gold_cities")  # shortcut
+one_table  = read("/tmp/shop.db", "gold_cities")              # shortcut
 raw        = db.sql("SELECT count(*) AS n FROM gold_cities")  # escape hatch
 ```
 
+The format-specific functions (`read_parquet`, `read_csv`, `read_ipc`,
+`read_duckdb`, and the matching `write_*` methods) remain for files whose
+extension doesn't say what they are.
+
 Tab completion works on `db.` (table names come from the live catalog),
 and a misspelled table gets a did-you-mean, just like columns do. Arrow
-IPC files round-trip the same way — `write_ipc(path)` / `read_ipc(path)` —
-and `read_ipc` memory-maps, so opening even a huge file is instant. For a
+IPC files round-trip with `write("x.arrow")` / `read("x.arrow")` and are
+memory-mapped on read, so opening even a huge file is instant. For a
 fast structural look at any frame, `glimpse()` prints one line per column
 with its dtype and leading values.
 

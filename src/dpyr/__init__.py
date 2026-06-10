@@ -51,7 +51,7 @@ from .frame import (
     read_parquet,
     read_sql,
 )
-from .io import Database, read_duckdb, read_ipc
+from .io import Database, read, read_duckdb, read_ipc
 from .materialize import cache_clear, cache_size, options
 from .plan import plan_hash
 from .tidyselect import (
@@ -67,13 +67,13 @@ from .tidyselect import (
     where,
 )
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     # frame + sources
     "DFrame", "GroupedDFrame", "from_schema", "from_polars", "from_dict",
     "from_pandas", "read_parquet", "read_csv", "from_duckdb", "read_sql",
-    "read_duckdb", "read_ipc", "Database",
+    "read", "read_duckdb", "read_ipc", "Database",
     # expressions
     "col", "n", "desc", "if_else", "case_when", "lit", "Expr", "typed_col",
     "lag", "lead", "row_number", "min_rank", "dense_rank", "percent_rank",

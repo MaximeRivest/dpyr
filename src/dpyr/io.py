@@ -102,6 +102,44 @@ def read_duckdb(path: str, table: str | None = None) -> Database | DFrame:
     return db.table(table) if table is not None else db
 
 
+_DB_SUFFIXES = (".db", ".duckdb", ".ddb")
+_IPC_SUFFIXES = (".arrow", ".feather", ".ipc")
+
+
+def read(path: str, table: str | None = None) -> DFrame | Database:
+    """The one reader: dispatches on file extension.
+
+        read("orders.parquet")           # parquet scan
+        read("orders.csv")               # csv scan
+        read("orders.arrow")             # arrow IPC, memory-mapped
+        read("shop.db")                  # duckdb catalog -> Database
+        read("shop.db", "orders")        # one duckdb table -> frame
+        read("data/*.parquet")           # globs work for parquet/csv
+
+    The format-specific functions (read_parquet, read_csv, read_ipc,
+    read_duckdb) remain for files with unusual extensions.
+    """
+    import pathlib
+    suffix = pathlib.PurePath(path).suffix.lower()
+    if suffix in _DB_SUFFIXES:
+        return read_duckdb(path, table)
+    if table is not None:
+        raise DpyrError(
+            f"read(table=...) only applies to duckdb files, not {suffix!r}")
+    from .frame import read_csv, read_parquet
+    if suffix in (".parquet", ".pq"):
+        return read_parquet(path)
+    if suffix == ".csv":
+        return read_csv(path)
+    if suffix in _IPC_SUFFIXES:
+        return read_ipc(path)
+    raise DpyrError(
+        f"read() can't infer a format from {path!r} (suffix {suffix!r}); "
+        "supported: .parquet/.pq, .csv, .arrow/.feather/.ipc, "
+        ".db/.duckdb/.ddb — or call read_parquet/read_csv/read_ipc/"
+        "read_duckdb directly")
+
+
 def read_ipc(path: str) -> DFrame:
     """Read an Arrow IPC (Feather v2) file — memory-mapped, zero-copy."""
     import polars as pl

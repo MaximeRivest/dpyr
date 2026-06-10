@@ -191,3 +191,50 @@ def test_write_duckdb_from_another_connection(tmp_path):
     with pytest.raises(d.DpyrError, match="different duckdb connection"):
         from dpyr.io import _file_con
         f.to_view("nope", con=_file_con(str(tmp_path / "land.db")))
+
+
+# -- the one reader / one writer ------------------------------------------------
+
+def test_read_write_dispatch_by_extension(tmp_path):
+    f = d.from_dict({"g": ["a", "b"], "x": [1.5, 2.5]})
+    for ext in ("parquet", "csv", "arrow"):
+        p = str(tmp_path / f"t.{ext}")
+        f.write(p)
+        back = d.read(p)
+        assert back.collect().to_dicts() == f.collect().to_dicts(), ext
+    bound = f.write(str(tmp_path / "shop.db"), "t")
+    assert bound.collect().height == 2
+    db = d.read(str(tmp_path / "shop.db"))
+    assert isinstance(db, d.Database) and db.tables == ["t"]
+    one = d.read(str(tmp_path / "shop.db"), "t")
+    assert one.collect().height == 2
+
+
+def test_read_write_errors_are_helpful(tmp_path):
+    f = d.from_dict({"x": [1]})
+    with pytest.raises(d.DpyrError, match="needs a table name"):
+        f.write(str(tmp_path / "x.db"))
+    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+        f.write(str(tmp_path / "x.parquet"), "t")
+    with pytest.raises(d.DpyrError, match="can't infer a format"):
+        f.write(str(tmp_path / "x.xlsx"))
+    with pytest.raises(d.DpyrError, match="can't infer a format"):
+        d.read(str(tmp_path / "x.xlsx"))
+    with pytest.raises(d.DpyrError, match="only applies to duckdb"):
+        d.read(str(tmp_path / "x.csv"), "t")
+
+
+def test_read_glob(tmp_path):
+    import polars as pl
+    pl.DataFrame({"x": [1]}).write_parquet(tmp_path / "a.parquet")
+    pl.DataFrame({"x": [2]}).write_parquet(tmp_path / "b.parquet")
+    out = d.read(str(tmp_path / "*.parquet"))
+    assert sorted(out.collect()["x"].to_list()) == [1, 2]
+
+
+def test_write_csv_in_engine(tmp_path):
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t AS SELECT * FROM range(3) r(x)")
+    p = str(tmp_path / "out.csv")
+    d.from_duckdb(con, "t").mutate(y=col.x * 2).write_csv(p)
+    assert d.read(p).collect()["y"].to_list() == [0, 2, 4]
