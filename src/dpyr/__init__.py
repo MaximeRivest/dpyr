@@ -1,17 +1,30 @@
-"""dataframe — dplyr for Python, fronting polars and duckdb.
+"""dpyr — dplyr for Python, fronting polars and duckdb.
 
-This release reserves the package name while the library is under active
-development. See https://github.com/maximerivest/dpyr for the design
-documents and roadmap.
+Epic 1 (expression IR & schema engine) is implemented: build verb chains
+against a schema and get immediate validation and output schemas. Execution
+backends arrive in Epics 2 (polars) and 5 (duckdb).
 """
 
-__version__ = "0.0.1"
+from . import dtypes
+from .dtypes import BOOL, DATE, DATETIME, FLOAT64, INT64, NULL, STR, DType
+from .errors import (
+    ColumnNotFoundError,
+    DpyrError,
+    DuplicateColumnError,
+    ExprTypeError,
+    GroupError,
+)
+from .expr import Expr, case_when, col, desc, if_else, infer_dtype, lit, n
+from .frame import DFrame, GroupedDFrame, from_schema
+from .plan import plan_hash
 
+__version__ = "0.1.0.dev0"
 
-def __getattr__(name: str):
-    raise NotImplementedError(
-        f"dpyr.{name} is not available yet: version {__version__} is a "
-        "name-reservation release. The dplyr-style API (filter, mutate, "
-        "group_by, summarize, ...) is under development — see "
-        "https://github.com/maximerivest/dpyr for the roadmap."
-    )
+__all__ = [
+    "col", "n", "desc", "if_else", "case_when", "lit",
+    "DFrame", "GroupedDFrame", "from_schema",
+    "DType", "INT64", "FLOAT64", "BOOL", "STR", "DATE", "DATETIME", "NULL",
+    "dtypes", "Expr", "infer_dtype", "plan_hash",
+    "DpyrError", "ColumnNotFoundError", "ExprTypeError",
+    "DuplicateColumnError", "GroupError",
+]
