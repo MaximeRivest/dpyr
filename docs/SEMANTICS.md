@@ -53,3 +53,4 @@ Rows added during implementation (discovered by the oracle/fuzzer):
 | S32 | `unite()` missing values | "NA" string (na.rm=FALSE) / dropped (TRUE) | engines skip or null | **R**: na_rm=False renders 'NA', na_rm=True drops (all-missing rows join to '') |
 | S33 | `slice_sample` algorithm | R PRNG (`sample()`) | engine-native samplers differ | **pinned**: shared LCG-mix ordering — same seed selects the same rows on BOTH engines; differs from R's sampler by construction |
 | S34 | mixing in-memory frames with duckdb tables | n/a | n/a | **pinned**: plans bridge automatically — duckdb scans the arrow data in place (zero-copy); two different duckdb connections still raise |
+| S27 (rev. 1.7.0) | tables on different duckdb connections in one plan | n/a | undefined | **pinned**: the foreign side streams through arrow onto the primary connection (a copy, UserWarning emitted); to_view across connections still raises |

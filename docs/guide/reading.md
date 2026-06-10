@@ -27,7 +27,10 @@ and your verbs run on polars or duckdb — you never pick a parser.
 | live duckdb connection | ✓ | ✓ (`to_table`) | `read(con)` → catalog |
 
 An unknown extension fails with the list of what's supported, so the
-error message is also the documentation.
+error message is also the documentation. And every source joins every
+other source — same-engine pairs directly, RAM into duckdb zero-copy,
+and across database connections via a visible (warned) arrow stream —
+see [Joins](joins.md).
 
 ## Files round-trip
 

@@ -364,12 +364,20 @@ def _bridge_name(token: str) -> str:
     return "__dpyr_arrow_" + hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
+_PRIMARY_CON_ID: list[int | None] = [None]  # set around a compilation
+
+
 def compile_plan(node: p.PlanNode) -> _Compiled:
     if isinstance(node, p.Source):
         payload = resolve(node.token)
         if isinstance(payload, PolarsPayload):
             # an in-memory frame bridged into duckdb: execute() registers
             # the arrow data under this name before running the query
+            ref = q(_bridge_name(node.token))
+        elif (_PRIMARY_CON_ID[0] is not None
+                and id(payload.con) != _PRIMARY_CON_ID[0]):
+            # a table on ANOTHER connection (second .db file, sqlite, ...):
+            # execute() streams it onto the primary connection as arrow
             ref = q(_bridge_name(node.token))
         else:
             ref = payload.table_sql
@@ -651,7 +659,11 @@ def _compile_join(node: p.Join) -> _Compiled:
 
 
 def final_sql(node: p.PlanNode) -> str:
-    c = compile_plan(node)
+    _PRIMARY_CON_ID[0] = id(connection_of(node))
+    try:
+        c = compile_plan(node)
+    finally:
+        _PRIMARY_CON_ID[0] = None
     return f"{c.sql} ORDER BY {c.order}" if c.order else c.sql
 
 
@@ -678,14 +690,28 @@ def _shared_bridge_con():
 
 def register_bridges(con: duckdb.DuckDBPyConnection,
                      node: p.PlanNode) -> list[str]:
-    """Register every in-memory source as an arrow view on `con` (duckdb
-    scans our RAM in place — no copy). Returns the names to unregister."""
+    """Register every source that doesn't live on `con`: in-memory frames
+    as zero-copy arrow views; tables on other duckdb connections streamed
+    across as arrow (a copy — warned for visibility on big tables).
+    Returns the names to unregister."""
     registered: list[str] = []
     for src in sources_of(node):
         payload = resolve(src.token)
         if isinstance(payload, PolarsPayload):
             name = _bridge_name(src.token)
             con.register(name, payload.lf.collect().to_arrow())
+            registered.append(name)
+        elif isinstance(payload, DuckPayload) and payload.con is not con:
+            import warnings
+            warnings.warn(
+                f"joining across database connections: streaming "
+                f"{payload.table_sql} through arrow onto the primary "
+                "connection; persist()/to_table() it there first if it is "
+                "large", stacklevel=4)
+            name = _bridge_name(src.token)
+            tbl = payload.con.execute(
+                f"SELECT * FROM {payload.table_sql}").to_arrow_table()
+            con.register(name, tbl)
             registered.append(name)
     return registered
 

@@ -141,6 +141,15 @@ csv.gz, xlsx (dpyr[excel] extra, sheet via second arg), sqlite read via
 duckdb's scanner; pathlib.Path accepted everywhere. New 'Reading &
 writing' guide right after Get started.
 
+## 1.7.0 ✅ (published 2026-06-10)
+Joins work from anything to anything: tables on different database
+connections (a second .db file, sqlite, separate in-memory databases)
+bridge by streaming the foreign side through arrow onto the plan's
+primary connection, with a UserWarning so large copies stay visible
+(S27 revised). Matrix-tested across in-memory/csv/parquet/duckdb/
+sqlite pairs. Future optimization: ATTACH for file-backed databases
+instead of streaming.
+
 ## Post-MVP (parking lot)
 `nest`,
 list-columns, streaming collect, arrow Flight sources, sqlite/postgres

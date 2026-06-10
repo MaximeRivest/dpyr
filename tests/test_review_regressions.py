@@ -142,14 +142,20 @@ def test_pivot_wider_without_id_columns(make):
 
 # -- backend safety (major) ----------------------------------------------------
 
-def test_cross_connection_join_raises_clearly():
+def test_cross_connection_join_is_correct_not_silent():
+    """Originally this raised; since 1.7.0 it bridges by streaming the
+    foreign table through arrow — correct data from the right connection
+    (the original bug risk was reading a same-named local table), with a
+    warning for visibility."""
     con1, con2 = duckdb.connect(), duckdb.connect()
-    con1.execute("CREATE TABLE t1 AS SELECT 1 AS k")
-    con2.execute("CREATE TABLE t2 AS SELECT 1 AS k, 'x' AS v")
+    con1.execute("CREATE TABLE t1 AS SELECT 1 AS k, 'con1' AS who")
+    con1.execute("CREATE TABLE shared AS SELECT 1 AS k, 'FROM-CON1' AS v")
+    con2.execute("CREATE TABLE shared AS SELECT 1 AS k, 'FROM-CON2' AS v")
     a = d.from_duckdb(con1, "t1")
-    b = d.from_duckdb(con2, "t2")
-    with pytest.raises(d.DpyrError, match="different duckdb connections"):
-        a.inner_join(b, on=col.k).collect()
+    b = d.from_duckdb(con2, "shared")
+    with pytest.warns(UserWarning, match="streaming"):
+        out = a.inner_join(b, on=col.k).collect()
+    assert out["v"].to_list() == ["FROM-CON2"]  # the RIGHT shared table
 
 
 # -- cache hygiene (minors) ------------------------------------------------------

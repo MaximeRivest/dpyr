@@ -75,17 +75,14 @@ def sources_of(node: PlanNode) -> list[Source]:
 
 def backend_kind(node: PlanNode) -> str:
     """The engine a plan runs on. In-memory (arrow/polars) frames bridge
-    into duckdb zero-copy, so mixing them with one duckdb connection is
-    fine; only two *different* duckdb connections cannot meet."""
+    into duckdb zero-copy; tables on OTHER duckdb connections (a second
+    .db file, a sqlite file, ...) bridge by streaming through arrow onto
+    the plan's primary connection (S27)."""
     payloads = [resolve(s.token) for s in sources_of(node)]
     if not payloads:
         raise BackendError("plan has no sources")
-    cons = {id(p.con) for p in payloads if isinstance(p, DuckPayload)}
-    if len(cons) > 1:
-        raise BackendError(
-            "plan joins tables from different duckdb connections; "
-            "persist one side or use a single connection")
-    return "duckdb" if cons else "polars"
+    return ("duckdb" if any(isinstance(p, DuckPayload) for p in payloads)
+            else "polars")
 
 
 def payload_of(node: PlanNode) -> Any:

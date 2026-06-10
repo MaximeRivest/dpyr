@@ -284,42 +284,9 @@ shape: (3, 3)
 └─────┴───────┴────────┘
 ```
 
-Frames from *different* connections can't be compiled into one query.
-Building the join succeeds (it's just a plan), but materializing raises a
-`BackendError` (SEMANTICS S27):
-
-```python
-other_con = duckdb.connect()
-other_con.execute("CREATE TABLE badges2 AS SELECT * FROM (VALUES (1, 'gold')) t(pid, badge)")
-stray = read(other_con, "badges2")
-
-try:
-    people.inner_join(stray, on=col.pid).collect()
-except Exception as e:
-    print(f"{type(e).__name__}: {e}")
-```
-
-```text
-BackendError: plan joins tables from different duckdb connections; persist one side or use a single connection
-```
-
-The simplest fix is to move one side's data onto the shared connection —
-for example, round-trip it through arrow:
-
-```python
-con.register("badges_local", stray.to_polars().to_arrow())
-people.inner_join(read(con, "badges_local"), on=col.pid)
-# 1 row: pid=1, Ada, gold — and the whole join runs inside con
-```
-
-Since 1.2.0 there's a one-liner for this: `stray.to_table("badges_local",
-con=con)` lands the frame on the target connection (copied via arrow) and
-returns a frame you can join directly. See the backends guide for the full
-`to_table` / `to_view` story.
-
-Mixing a duckdb frame with an *in-memory* frame, on the other hand, just
-works (since 1.2.0). The plan runs inside duckdb, which scans the
-in-memory frame's Arrow data in place — no copy, no staging step:
+Mixing a duckdb frame with an *in-memory* frame just works: the plan runs
+inside duckdb, which scans the in-memory frame's Arrow data in place — no
+copy, no staging step:
 
 ```python
 from dpyr import read
@@ -339,9 +306,35 @@ shape: (2, 3)
 └─────┴───────┴───────┘
 ```
 
-So the only hard boundary is two *different* duckdb connections; everything
-in RAM is automatically visible to whichever connection the plan runs on
-(SEMANTICS S34).
+And since 1.7.0, even frames from *different* connections — a second
+duckdb file, a sqlite file, separate in-memory databases — join too. The
+foreign side is streamed through Arrow onto the plan's primary
+connection. That stream is a copy of that table's rows, so dpyr warns to
+keep it visible; for a large table, land it once with
+`to_table("name", con=...)` and join the landed copy instead:
+
+```python
+other_con = duckdb.connect()
+other_con.execute("CREATE TABLE badges2 AS SELECT * FROM (VALUES (1, 'gold')) t(pid, badge)")
+stray = read(other_con, "badges2")
+
+import warnings
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    out = people.inner_join(stray, on=col.pid).collect()
+print(out.to_dicts())
+print(caught[0].message)
+```
+
+```text
+[{'pid': 1, 'name': 'Ada', 'badge': 'gold'}]
+joining across database connections: streaming "badges2" through arrow onto the primary connection; persist()/to_table() it there first if it is large
+```
+
+In short: **any source joins any source** (SEMANTICS S27/S34). Same
+engine is free, RAM into duckdb is zero-copy, and across database
+connections costs one streamed copy of the smaller side — which you can
+see, because it warns.
 
 ## Cheat sheet
 

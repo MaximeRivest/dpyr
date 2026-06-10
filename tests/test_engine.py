@@ -43,13 +43,14 @@ def test_bridge_unregisters_after_collect():
     assert leftover == []
 
 
-def test_two_connections_still_error():
+def test_two_connections_bridge_with_warning():
     con1, con2 = duckdb.connect(), duckdb.connect()
-    con1.execute("CREATE TABLE a AS SELECT 1 AS k")
-    con2.execute("CREATE TABLE b AS SELECT 1 AS k")
-    with pytest.raises(d.DpyrError, match="different duckdb connections"):
-        d.from_duckdb(con1, "a").inner_join(
+    con1.execute("CREATE TABLE a AS SELECT 1 AS k, 'one' AS va")
+    con2.execute("CREATE TABLE b AS SELECT 1 AS k, 'two' AS vb")
+    with pytest.warns(UserWarning, match="streaming"):
+        out = d.from_duckdb(con1, "a").inner_join(
             d.from_duckdb(con2, "b"), on=col.k).collect()
+    assert out.to_dicts() == [{"k": 1, "va": "one", "vb": "two"}]
 
 
 # -- engine selection -----------------------------------------------------------
@@ -354,3 +355,40 @@ def test_read_write_accept_pathlib(tmp_path):
     f = d.from_dict({"x": [1, 2]})
     f.write(tmp_path / "t.parquet")          # a pathlib.Path, not a str
     assert d.read(tmp_path / "t.parquet").collect().height == 2
+
+
+def test_join_anything_to_anything(tmp_path):
+    """The full matrix: any pair of sources joins."""
+    import sqlite3
+    base = {"k": [1, 2], "v": ["a", "b"]}
+    other = {"k": [1, 2], "w": [10, 20]}
+
+    d.read(base).write(tmp_path / "a.csv")
+    d.read(other).write(tmp_path / "b.parquet")
+    d.read(other).write(tmp_path / "c.db", "t")
+    d.read(other).write(tmp_path / "d.duckdb", "t")
+    sq = sqlite3.connect(tmp_path / "e.sqlite")
+    sq.execute("CREATE TABLE t (k INTEGER, w INTEGER)")
+    sq.executemany("INSERT INTO t VALUES (?, ?)", [(1, 10), (2, 20)])
+    sq.commit()
+    sq.close()
+
+    left_sources = [
+        d.read(base),                          # in-memory
+        d.read(tmp_path / "a.csv"),            # csv scan
+        d.read(tmp_path / "c.db", "t"),        # duckdb file (note: has w not v)
+    ]
+    right_sources = [
+        d.read(tmp_path / "b.parquet"),        # parquet scan
+        d.read(tmp_path / "d.duckdb", "t"),    # a second duckdb file
+        d.read(tmp_path / "e.sqlite", "t"),    # sqlite via scanner
+        d.read(other),                         # in-memory
+    ]
+    import warnings
+    for left in left_sources:
+        for right in right_sources:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # cross-connection streams
+                out = (left.inner_join(right, on=col.k, suffix=("_l", "_r"))
+                       .arrange(col.k).collect())
+            assert out.height == 2 and out["k"].to_list() == [1, 2]

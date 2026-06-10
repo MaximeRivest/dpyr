@@ -442,23 +442,34 @@ except dpyr.DpyrError as e:
 engine='polars' cannot read duckdb-resident tables; duckdb can read in-memory frames, not vice versa
 ```
 
-The remaining hard boundary is two tables from *different* duckdb
-connections — those genuinely cannot meet in one query (SEMANTICS S27):
+Even tables from *different* connections meet (since 1.7.0): the foreign
+side streams through Arrow onto the plan's primary connection. Because
+that stream copies the foreign table's rows, dpyr emits a warning so
+large-table copies never happen invisibly — land big tables once with
+`to_table("name", con=...)` instead (SEMANTICS S27):
 
 ```python
+import warnings
+
 con2 = duckdb.connect()
 con2.execute(
     "CREATE TABLE depots AS SELECT * FROM (VALUES ('Hull', 4), ('Aylmer', 2)) t(city, docks)"
 )
-try:
-    deliveries.inner_join(read(con2, "depots"), on=col.city).collect()
-except dpyr.DpyrError as e:
-    print(e)
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")  # "streaming ... through arrow"
+    cross = (deliveries.inner_join(read(con2, "depots"), on=col.city)
+             .arrange(col.city, col.month))
+print(cross.collect().columns)
 ```
 
 ```text
-plan joins tables from different duckdb connections; persist one side or use a single connection
+['city', 'month', 'km', 'docks']
 ```
+
+This is what makes joins work from *anything to anything*: same-engine
+pairs are free, RAM bridges into duckdb zero-copy, and cross-connection
+pairs (a second `.db` file, a sqlite file, separate in-memory databases)
+cost one visible streamed copy.
 
 ## One dtype system
 
