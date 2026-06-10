@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
 
+import functools
+
 from . import plan as p
 from .backend import BackendError, DuckPayload, PolarsPayload, register
 from .dtypes import DType
@@ -24,6 +26,33 @@ if TYPE_CHECKING:
 
 ColRef = str | Col
 IntoPredicate = Expr | Callable[["ColsProxy"], Expr]
+
+_VERBS = ("filter", "mutate", "select", "rename", "arrange", "distinct",
+          "slice_head", "slice_tail", "slice_sample", "group_by",
+          "summarize", "summarise", "count", "inner_join", "left_join",
+          "right_join", "full_join", "semi_join", "anti_join",
+          "pivot_longer", "pivot_wider", "pull")
+
+
+def _polish_tracebacks(cls: type) -> type:
+    """Re-raise dpyr errors from the verb call itself, so the user sees
+    their line plus one frame instead of the schema engine internals."""
+    from .errors import DpyrError
+
+    def wrap(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def verb(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(*args, **kwargs)
+            except DpyrError as err:
+                raise err.with_traceback(None) from None
+        return verb
+
+    for name in _VERBS:
+        fn = cls.__dict__.get(name)
+        if fn is not None:
+            setattr(cls, name, wrap(fn))
+    return cls
 
 
 def _name(ref: ColRef, what: str) -> str:
@@ -56,6 +85,7 @@ class ColsProxy:
         return list(object.__getattribute__(self, "_schema"))
 
 
+@_polish_tracebacks
 class DFrame:
     """An ungrouped tidy frame (lazy plan + eager schema)."""
 
@@ -288,6 +318,7 @@ class DFrame:
             return self._spawn(node)  # schema-only frames stay symbolic
 
 
+@_polish_tracebacks
 class GroupedDFrame(DFrame):
     """A grouped frame: its own type so completion and semantics differ."""
 
