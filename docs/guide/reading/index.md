@@ -17,6 +17,10 @@ read("survey.xlsx", "2024")   # the sheet called "2024"
 read("forest.db", "plots")    # the table called "plots"
 ```
 
+Multi-table sources opened *without* a name give you a catalog you can
+explore — a duckdb file lists its tables, a multi-sheet workbook its
+sheets — so `print(read("mystery.xlsx"))` is always a safe first move.
+
 That's the whole API. Everything format-specific — what the second
 argument means, what can go wrong, how to fix it — lives on one page per
 format below.
@@ -27,7 +31,7 @@ format below.
 |---|---|---|---|
 | `.csv`, `.tsv` (and `.gz`) | ✓ | ✓ | [CSV & TSV](csv.md) |
 | `.parquet` / `.pq` | ✓ | ✓ | [Parquet](parquet.md) |
-| `.xlsx` | ✓ | ✓ | [Excel](excel.md) |
+| `.xlsx`, Google Sheets URLs | ✓ | ✓ (`.xlsx`) | [Excel & Google Sheets](excel.md) |
 | `.json`, `.jsonl` / `.ndjson` | ✓ | ✓ | [JSON](json.md) |
 | `.arrow` / `.feather` / `.ipc` | ✓ | ✓ | [Arrow IPC](arrow.md) |
 | `.db` / `.duckdb` / `.ddb`, `.sqlite` / `.sqlite3`, live connections | ✓ | ✓ | [Databases](databases.md) |

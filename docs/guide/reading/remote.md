@@ -9,7 +9,11 @@ from dpyr import read, col
 read("https://example.org/events.parquet")        # any HTTP(S) host
 read("s3://bucket/logs/*.parquet")                # object stores
 read("hf://datasets/user/dataset/data.parquet")   # the Hugging Face Hub
+read("https://docs.google.com/spreadsheets/d/...")  # a Google Sheet
 ```
+
+(Google Sheets URLs have their own page — see
+[Excel & Google Sheets](excel.md#google-sheets).)
 
 For parquet, both engines push your column selections and filters into
 the request itself — filtering a huge remote file downloads only the

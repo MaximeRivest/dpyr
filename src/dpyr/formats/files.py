@@ -151,40 +151,159 @@ file_format("arrow", (".arrow", ".feather", ".ipc"), _read_ipc, _write_ipc)
 
 # -- excel (optional extra: dpyr[excel]) -------------------------------------------
 
-def _xlsx_sheet_names(path: str) -> list[str] | None:
+def _xlsx_sheet_names(path: str, mode: str) -> list[str]:
+    import os
     try:
         import fastexcel
-        return list(fastexcel.read_excel(path).sheet_names)
-    except Exception:
-        return None
-
-
-def _read_xlsx(path: str, table: str | None) -> DFrame:
-    import polars as pl
-    try:
-        df = pl.read_excel(path, sheet_name=table)
     except (ImportError, ModuleNotFoundError) as err:
         raise DpyrError(
-            "reading .xlsx needs the excel extra: pip install 'dpyr[excel]'"
+            f"{mode} .xlsx needs the excel extra: pip install 'dpyr[excel]'"
         ) from err
-    except ValueError as err:
-        if table is not None and "sheet" in str(err):
-            sheets = _xlsx_sheet_names(path)
-            listed = (f"; sheets in this workbook: {sheets}"
-                      if sheets else "")
+    if not os.path.exists(path):
+        raise DpyrError(f"read({path!r}): no such file")
+    return list(fastexcel.read_excel(path).sheet_names)
+
+
+def _read_xlsx_sheet(path: str, sheet: str) -> DFrame:
+    import polars as pl
+    df = pl.read_excel(path, sheet_name=sheet)
+    # the sheet is part of the token: two sheets of one file must never
+    # share a plan hash (the cache would serve one sheet's rows as the other)
+    return _scan_source(f"xlsx[{sheet}]", df.lazy(), path)
+
+
+class Workbook:
+    """A multi-sheet .xlsx file opened the catalog way, like a duckdb
+    Database: sheets are attributes, with completion and did-you-mean.
+
+        wb = read("report.xlsx")
+        wb.sheets        # ['2024 plots', 'notes']
+        wb["2024 plots"] # a frame; wb.notes works for plain names
+    """
+
+    _path: str
+    _names: list[str]
+    _label: str
+
+    def __init__(self, path: str, names: list[str],
+                 label: str | None = None) -> None:
+        self._path = path
+        self._names = names
+        # what messages show: the original URL for a downloaded Google
+        # Sheet, the path itself otherwise
+        self._label = label or path
+
+    @property
+    def sheets(self) -> list[str]:
+        return list(self._names)
+
+    def sheet(self, name: str) -> DFrame:
+        if name not in self._names:
+            import difflib
+            close = difflib.get_close_matches(name, self._names, n=1)
+            hint = f" Did you mean {close[0]!r}?" if close else ""
             raise DpyrError(
-                f"no sheet named {table!r} in {path!r}{listed}") from err
-        raise
-    return _scan_source("xlsx", df.lazy(), path)
+                f"no sheet named {name!r} in {self._label!r}.{hint} "
+                f"Sheets: {', '.join(self._names)}")
+        return _read_xlsx_sheet(self._path, name)
+
+    def __getattr__(self, name: str) -> DFrame:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self.sheet(name)
+
+    def __getitem__(self, name: str) -> DFrame:
+        return self.sheet(name)
+
+    def __dir__(self) -> list[str]:
+        return [*super().__dir__(), *self._names]
+
+    def __repr__(self) -> str:
+        lines = [f"# excel workbook: {self._label}"]
+        lines += [f"#   {s}" for s in self._names]
+        lines.append("# read a sheet: wb.sheet(name), wb[name], or wb.<name>")
+        return "\n".join(lines)
+
+
+def _read_xlsx(path: str, table: str | None,
+               label: str | None = None) -> DFrame | Workbook:
+    names = _xlsx_sheet_names(path, "reading")
+    if table is None:
+        # one sheet behaves like a CSV; several open as a catalog
+        if len(names) == 1:
+            return _read_xlsx_sheet(path, names[0])
+        return Workbook(path, names, label)
+    return Workbook(path, names, label).sheet(table)
+
+
+# -- google sheets (read-only, via the workbook's xlsx export) ---------------------
+
+def is_gsheet_url(source: str) -> bool:
+    return "docs.google.com/spreadsheets" in source
+
+
+def read_gsheet(url: str, table: str | None) -> DFrame | Workbook:
+    """Read a Google Sheet by its ordinary browser URL. The whole workbook
+    is fetched through Google's xlsx export, so sheets behave exactly like
+    a local Excel file (single sheet -> frame, several -> Workbook).
+    Works for link-readable sheets; private ones explain how to share."""
+    import re
+    import tempfile
+    import urllib.error
+    import urllib.request
+
+    m = re.search(r"docs\.google\.com/spreadsheets/d/([\w-]+)", url)
+    if m is None:
+        raise DpyrError(
+            f"read() can't find a spreadsheet id in {url!r}; expected a URL "
+            "like https://docs.google.com/spreadsheets/d/<id>/...")
+    export = (f"https://docs.google.com/spreadsheets/d/{m.group(1)}"
+              "/export?format=xlsx")
+    not_shared = DpyrError(
+        f"this Google Sheet is not link-readable: {url!r}. In Google "
+        "Sheets use Share -> 'Anyone with the link' (Viewer), or "
+        "File -> Download -> .xlsx and read the file")
+    req = urllib.request.Request(export, headers={"User-Agent": "dpyr"})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = resp.read()
+    except urllib.error.HTTPError as err:
+        raise not_shared from err
+    if not data.startswith(b"PK"):  # the login page, not an xlsx (zip)
+        raise not_shared
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as fh:
+        fh.write(data)
+    return _read_xlsx(fh.name, table, label=url)
 
 
 def _write_xlsx(frame: DFrame, path: str, table: str | None) -> None:
+    import os
     try:
-        frame.collect().write_excel(path, worksheet=table or "Sheet1")
+        import polars as pl
+        import xlsxwriter  # type: ignore[import-untyped]
     except (ImportError, ModuleNotFoundError) as err:
         raise DpyrError(
             "writing .xlsx needs the excel extra: pip install 'dpyr[excel]'"
         ) from err
+    target = table or "Sheet1"
+    df = frame.collect()
+    # writing into an existing workbook replaces only the target sheet;
+    # the others are carried over (values, not cell formatting)
+    existing = _xlsx_sheet_names(path, "writing") if os.path.exists(path) else []
+    others = [n for n in existing if n != target]
+    if others:
+        import warnings
+        warnings.warn(
+            f"write({path!r}, {target!r}): keeping the workbook's other "
+            f"sheets ({', '.join(others)}) — values are preserved, cell "
+            "formatting is not", stacklevel=3)
+    ordered = [(n, df if n == target else pl.read_excel(path, sheet_name=n))
+               for n in existing]  # keep the original tab order
+    if target not in existing:
+        ordered.append((target, df))
+    with xlsxwriter.Workbook(path) as wb:
+        for name, data in ordered:
+            data.write_excel(workbook=wb, worksheet=name)
 
 
 file_format("excel", (".xlsx",), _read_xlsx, _write_xlsx)

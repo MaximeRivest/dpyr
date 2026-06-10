@@ -17,6 +17,7 @@ from .errors import DpyrError
 if TYPE_CHECKING:
     import duckdb
 
+    from .formats.files import Workbook
     from .frame import DFrame
 
 _FILE_CONS: dict[str, Any] = {}
@@ -106,7 +107,7 @@ _DB_SUFFIXES = (".db", ".duckdb", ".ddb")
 _IPC_SUFFIXES = (".arrow", ".feather", ".ipc")
 
 
-def read(source: Any, table: str | None = None) -> DFrame | Database:
+def read(source: Any, table: str | None = None) -> DFrame | Database | Workbook:
     """The one way in. Paths and URLs dispatch on extension; in-memory
     objects dispatch on type:
 
@@ -115,6 +116,11 @@ def read(source: Any, table: str | None = None) -> DFrame | Database:
                                           # hf:// s3:// https:// URLs
         read("shop.db")                   # duckdb file -> Database catalog
         read("shop.db", "orders")         # one duckdb table -> frame
+        read("report.xlsx", "Q1")         # one sheet (multi-sheet files
+                                          # open as a Workbook catalog)
+        read("https://docs.google.com/spreadsheets/d/<id>/edit")
+                                          # a link-readable Google Sheet,
+                                          # same Workbook/sheet behavior
         read("legacy.sqlite", "users")    # sqlite via duckdb's scanner
         read({"x": [1, 2]})               # plain Python data
         read(polars_or_pandas_dataframe)  # zero/near-zero copy
@@ -128,6 +134,9 @@ def read(source: Any, table: str | None = None) -> DFrame | Database:
     from . import formats
     if isinstance(source, (str, os.PathLike)):
         source = os.fspath(source)
+        from .formats.files import is_gsheet_url, read_gsheet
+        if is_gsheet_url(source):
+            return read_gsheet(source, table)
         fmt = formats.match_file(source)
         if fmt is None or fmt.reader is None:
             raise DpyrError(

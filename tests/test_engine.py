@@ -322,8 +322,85 @@ def test_xlsx_named_sheet_and_bad_sheet_error(tmp_path):
     p = str(tmp_path / "t.xlsx")
     f.write(p, "plots")
     assert d.read(p, "plots").collect().to_dicts() == f.collect().to_dicts()
-    with pytest.raises(d.DpyrError, match=r"no sheet named 'oops'.*'plots'"):
+    with pytest.raises(d.DpyrError, match=r"no sheet named 'oops'.*plots"):
         d.read(p, "oops")
+    with pytest.raises(d.DpyrError, match="no such file"):
+        d.read(str(tmp_path / "missing.xlsx"))
+
+
+def test_xlsx_multi_sheet_workbook(tmp_path):
+    pytest.importorskip("fastexcel")
+    plots = d.from_dict({"plot": ["n", "s"], "acres": [3.2, 1.8]})
+    notes = d.from_dict({"note": ["dry spring"]})
+    p = str(tmp_path / "report.xlsx")
+    plots.write(p, "plots")
+    with pytest.warns(UserWarning, match="keeping the workbook's other"):
+        notes.write(p, "notes")  # appends, preserving the plots sheet
+
+    wb = d.read(p)
+    assert isinstance(wb, d.Workbook)
+    assert wb.sheets == ["plots", "notes"]  # original tab order kept
+    assert wb.plots.collect().to_dicts() == plots.collect().to_dicts()
+    assert wb["notes"].collect().to_dicts() == notes.collect().to_dicts()
+    assert "plots" in repr(wb) and "notes" in dir(wb)
+    with pytest.raises(d.DpyrError, match="Did you mean 'plots'"):
+        wb.plotz
+    # the two sheets must never share a cache entry
+    assert d.read(p, "plots").collect().columns != d.read(p, "notes").collect().columns
+
+    # rewriting an existing sheet replaces it in place
+    plots2 = d.from_dict({"plot": ["e"], "acres": [9.9]})
+    with pytest.warns(UserWarning):
+        plots2.write(p, "plots")
+    wb2 = d.read(p)
+    assert wb2.sheets == ["plots", "notes"]
+    assert wb2.plots.collect().to_dicts() == plots2.collect().to_dicts()
+    assert wb2.notes.collect().to_dicts() == notes.collect().to_dicts()
+
+
+def test_google_sheet_url_reads_as_workbook(tmp_path, monkeypatch):
+    pytest.importorskip("fastexcel")
+    import io
+    import urllib.request
+
+    plots = d.from_dict({"plot": ["n", "s"], "acres": [3.2, 1.8]})
+    notes = d.from_dict({"note": ["dry spring"]})
+    p = str(tmp_path / "wb.xlsx")
+    plots.write(p, "plots")
+    with pytest.warns(UserWarning):
+        notes.write(p, "notes")
+    payload = open(p, "rb").read()
+
+    captured = {}
+
+    class FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req):
+        captured["url"] = req.full_url
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    url = "https://docs.google.com/spreadsheets/d/abc-123_XY/edit?gid=0"
+    wb = d.read(url)
+    assert isinstance(wb, d.Workbook)
+    assert captured["url"] == (
+        "https://docs.google.com/spreadsheets/d/abc-123_XY/export?format=xlsx")
+    assert wb.sheets == ["plots", "notes"]
+    assert url in repr(wb)
+    assert d.read(url, "plots").collect().to_dicts() == plots.collect().to_dicts()
+    with pytest.raises(d.DpyrError, match="Did you mean 'plots'"):
+        d.read(url, "plotz")
+
+    # a private sheet answers with the login page, not an xlsx zip
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req: FakeResponse(b"<html>sign in</html>"))
+    with pytest.raises(d.DpyrError, match="not link-readable"):
+        d.read(url)
 
 
 def test_csv_gz_reads(tmp_path):

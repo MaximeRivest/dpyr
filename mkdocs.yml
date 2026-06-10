@@ -38,7 +38,7 @@ nav:
           - Overview: guide/reading/index.md
           - CSV & TSV: guide/reading/csv.md
           - Parquet: guide/reading/parquet.md
-          - Excel: guide/reading/excel.md
+          - Excel & Google Sheets: guide/reading/excel.md
           - JSON: guide/reading/json.md
           - Arrow IPC: guide/reading/arrow.md
           - Databases: guide/reading/databases.md

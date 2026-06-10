@@ -18,8 +18,9 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from ..frame import DFrame
     from ..io import Database
+    from .files import Workbook
 
-ReadFn = Callable[[str, "str | None"], "DFrame | Database"]
+ReadFn = Callable[[str, "str | None"], "DFrame | Database | Workbook"]
 WriteFn = Callable[["DFrame", str, "str | None"], "DFrame | None"]
 
 
