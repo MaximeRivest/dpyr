@@ -98,3 +98,15 @@ def test_pivot_wider_is_implicitly_persisted(make):
     # schema known immediately because the input was materialized
     assert wide.columns == ["id", "x", "y"]
     assert wide.schema["x"] == d.FLOAT64
+
+
+def test_preview_rows_shows_that_many_rows_not_polars_default():
+    # polars cuts every printout to 10 rows; the preview must show what it fetched
+    old = d.options.preview_rows
+    d.options.preview_rows = 30
+    try:
+        text = repr(d.read({"x": list(range(40))}))
+    finally:
+        d.options.preview_rows = old
+    assert "showing 30 of" in text and "…" not in text
+    assert "│ 29  │" in text

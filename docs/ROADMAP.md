@@ -172,6 +172,10 @@ usable in `mutate()`/`filter()` with columns and constants as arguments
 remembered, displays that run only the shown rows, `threads=`, and
 failures that keep the work already done.
 
+## 1.10.1 ✅
+A displayed dataframe shows `options.preview_rows` rows: polars no longer
+cuts the printout to its own 10-row default.
+
 ## Post-MVP (parking lot)
 `nest`/`unnest`/`hoist` and computing on list-columns (1.9.0 carries
 them), streaming collect, arrow Flight sources, sqlite/postgres

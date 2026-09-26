@@ -254,7 +254,9 @@ class DFrame(Generic[S]):
         rows, total = preview(self._plan, options.preview_rows)
         shown = rows.height
         total_s = str(total) if total is not None else "?"
-        body = repr(rows)
+        import polars as pl
+        with pl.Config(tbl_rows=options.preview_rows):
+            body = repr(rows)
         return f"{head} · showing {shown} of {total_s} rows\n{body}"
 
     def _repr_html_(self) -> str | None:
@@ -263,7 +265,9 @@ class DFrame(Generic[S]):
             return None
         rows, total = preview(self._plan, options.preview_rows)
         total_s = str(total) if total is not None else "unknown"
-        html = rows._repr_html_() or ""
+        import polars as pl
+        with pl.Config(tbl_rows=options.preview_rows):
+            html = rows._repr_html_() or ""
         return (f"<div><small># dpyr · source: {kind} · showing "
                 f"{rows.height} of {total_s} rows</small>{html}</div>")
 
