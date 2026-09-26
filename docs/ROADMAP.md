@@ -165,6 +165,13 @@ booleans as in R — `mean(correct)` is the share of TRUE (S37). Fixed: in-engin
 (`write()`, `to_table()`, `persist()`) no longer leak internal `__rn`
 helper columns after `arrange()`.
 
+## 1.10.0 ✅
+Your own functions, row by row: `vectorize(fn)` makes any Python function
+usable in `mutate()`/`filter()` with columns and constants as arguments
+(S38) — typed from its annotation, one call per distinct input, results
+remembered, displays that run only the shown rows, `threads=`, and
+failures that keep the work already done.
+
 ## Post-MVP (parking lot)
 `nest`/`unnest`/`hoist` and computing on list-columns (1.9.0 carries
 them), streaming collect, arrow Flight sources, sqlite/postgres

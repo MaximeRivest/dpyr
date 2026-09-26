@@ -58,6 +58,20 @@ def _polish_tracebacks(cls: type) -> type:
     return cls
 
 
+def _mutate_node(node: p.PlanNode, exprs: tuple[tuple[str, Expr], ...]) -> p.PlanNode:
+    from .rows import contains_row_call, lift_mutate
+    if any(contains_row_call(e) for _n, e in exprs):
+        return lift_mutate(node, exprs)             # Python-per-row steps first (S38)
+    return p.Mutate(node, exprs)
+
+
+def _filter_node(node: p.PlanNode, predicates: tuple[Expr, ...]) -> p.PlanNode:
+    from .rows import contains_row_call, lift_filter
+    if any(contains_row_call(e) for e in predicates):
+        return lift_filter(node, predicates)
+    return p.Filter(node, predicates)
+
+
 def _name(ref: ColRef, what: str) -> str:
     if isinstance(ref, Col):
         return ref.name
@@ -325,7 +339,8 @@ class DFrame(Generic[S]):
         if _plan_needs_python(self._plan):
             raise BackendError(
                 "this chain includes a step that must materialize "
-                "(pivot_wider); use to_table() instead of to_view()")
+                "(pivot_wider, or a function run per row); use to_table() "
+                "instead of to_view()")
         return self._create_in_engine("VIEW", name, landing, temporary)
 
     def write_duckdb(self, path: str, table: str) -> DFrame:
@@ -445,10 +460,10 @@ class DFrame(Generic[S]):
 
     # -- verbs ----------------------------------------------------------
     def filter(self, *predicates: IntoPredicate) -> DFrame:
-        return self._spawn(p.Filter(self._plan, self._resolve_preds(predicates)))
+        return self._spawn(_filter_node(self._plan, self._resolve_preds(predicates)))
 
     def mutate(self, *args: Any, **exprs: Expr | Callable[[ColsProxy], Expr]) -> DFrame:
-        return self._spawn(p.Mutate(self._plan, self._resolve_exprs(args, exprs)))
+        return self._spawn(_mutate_node(self._plan, self._resolve_exprs(args, exprs)))
 
     def select(self, *cols: Any) -> DFrame:
         from .tidyselect import resolve_selection
@@ -622,10 +637,10 @@ class GroupedDFrame(DFrame[S]):
         return out
 
     def filter(self, *predicates: IntoPredicate) -> GroupedDFrame:
-        return self._spawn_grouped(p.Filter(self._plan, self._resolve_preds(predicates)))
+        return self._spawn_grouped(_filter_node(self._plan, self._resolve_preds(predicates)))
 
     def mutate(self, *args: Any, **exprs: Expr | Callable[[ColsProxy], Expr]) -> GroupedDFrame:
-        return self._spawn_grouped(p.Mutate(self._plan, self._resolve_exprs(args, exprs)))
+        return self._spawn_grouped(_mutate_node(self._plan, self._resolve_exprs(args, exprs)))
 
     def group_by(self, *keys: ColRef) -> GroupedDFrame:
         names = tuple(_name(k, "group_by()") for k in keys)

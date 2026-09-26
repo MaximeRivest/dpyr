@@ -11,7 +11,7 @@ as possible observably.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from . import plan as p
 from .backend import DuckPayload, PolarsPayload, backend_kind, register
@@ -35,7 +35,10 @@ _CACHE: dict[str, pl.DataFrame] = {}
 
 
 def cache_clear() -> None:
+    """Forget cached results, including remembered row-function results."""
+    from .rows import memo_clear
     _CACHE.clear()
+    memo_clear()
 
 
 def cache_size() -> int:
@@ -47,7 +50,9 @@ def collect(node: p.PlanNode, *, use_cache: bool = True,
     key = p.plan_hash(node) + (f":{engine}" if engine else "")
     if use_cache and key in _CACHE:
         return _CACHE[key]
-    if isinstance(node, p.PivotWider):
+    if has_row_maps(node):
+        out = collect(run_row_maps(node), use_cache=False, engine=engine)
+    elif isinstance(node, p.PivotWider):
         # schema needs data: pivot in polars on either backend (DESIGN §3)
         import warnings
 
@@ -137,9 +142,83 @@ def persist_source(node: p.PlanNode) -> p.Source:
     return p.Source("persisted", tuple(schema.items()), token)
 
 
+def has_row_maps(node: p.PlanNode) -> bool:
+    if isinstance(node, p.RowMap):
+        return True
+    return any(has_row_maps(c) for c in _child_nodes(node))
+
+
+def _child_nodes(node: p.PlanNode) -> list[p.PlanNode]:
+    return [v for f in node.__dataclass_fields__
+            if isinstance(v := getattr(node, f), p.PlanNode)]
+
+
+def run_row_maps(node: p.PlanNode) -> p.PlanNode:
+    """The plan with every RowMap step run (S38): its input is collected by
+    the engine, the Python function fills the column, and the result comes
+    back as an in-memory table (regrouped if the step was grouped)."""
+    import dataclasses
+
+    import polars as pl
+
+    from .rows import attach
+    if isinstance(node, p.RowMap):
+        child = run_row_maps(node.child)
+        df = attach(node, collect(child))
+        token = register(PolarsPayload(pl.LazyFrame(df)), hint="rows")
+        src: p.PlanNode = p.Source("rows", tuple(node.schema.items()), token)
+        return p.GroupBy(src, node.groups) if node.groups else src
+    changes: dict[str, Any] = {}
+    for f in node.__dataclass_fields__:
+        v = getattr(node, f)
+        if isinstance(v, p.PlanNode) and has_row_maps(v):
+            changes[f] = run_row_maps(v)
+    return dataclasses.replace(node, **changes) if changes else node
+
+
+def _row_local(node: p.PlanNode) -> bool:
+    """Steps whose first k output rows come from the first k input rows."""
+    from .expr import contains_agg, contains_window
+    if isinstance(node, p.Mutate):
+        return not any(contains_agg(e) or contains_window(e) for _n, e in node.exprs)
+    return isinstance(node, (p.RowMap, p.Select, p.Rename, p.GroupBy, p.Ungroup))
+
+
+def _head_before_row_maps(node: p.PlanNode, k: int) -> tuple[p.PlanNode, p.PlanNode]:
+    """The plan with ``head(k)`` moved down through row-local steps, so row
+    functions above the cut run on k rows only; returns (plan, cut)."""
+    import dataclasses
+    if _row_local(node):
+        child, cut = _head_before_row_maps(node.child, k)  # type: ignore[attr-defined]
+        return dataclasses.replace(node, child=child), cut  # type: ignore[call-arg]
+    head: p.PlanNode = p.Slice(p.Ungroup(node) if node.groups else node, "head", k)
+    return (p.GroupBy(head, node.groups) if node.groups else head), node
+
+
+def _count(node: p.PlanNode) -> int:
+    """Row count, computed by the engine (no rows move into Python)."""
+    if p.plan_hash(node) in _CACHE:
+        return _CACHE[p.plan_hash(node)].height
+    if backend_kind(node) == "polars":
+        import polars as pl
+
+        from .polars_backend import compile_plan
+        return int(compile_plan(node).select(pl.len()).collect().item())
+    from .duckdb_backend import connection_of, final_sql, register_bridges
+    con = connection_of(node)
+    bridged = register_bridges(con, node)
+    try:
+        row = con.execute(f"SELECT count(*) FROM ({final_sql(node)}) t").fetchone()
+    finally:
+        for name in bridged:
+            con.unregister(name)
+    return int(row[0]) if row else 0
+
+
 def _plan_needs_python(node: p.PlanNode) -> bool:
-    """True if any node must materialize through polars (pivot_wider)."""
-    if isinstance(node, p.PivotWider):
+    """True if any node must materialize through polars (pivot_wider, row
+    functions)."""
+    if isinstance(node, (p.PivotWider, p.RowMap)):
         return True
     for f in node.__dataclass_fields__:
         v = getattr(node, f)
@@ -154,6 +233,12 @@ def preview(node: p.PlanNode, n_rows: int) -> tuple[pl.DataFrame, int | None]:
     key = p.plan_hash(node)
     if key in _CACHE:
         full = _CACHE[key]
+        return full.head(n_rows), full.height
+    if has_row_maps(node):
+        limited, cut = _head_before_row_maps(node, n_rows)
+        if not has_row_maps(cut):      # the row functions run on the shown rows only
+            return collect(limited), _count(cut)
+        full = collect(node)
         return full.head(n_rows), full.height
     kind = backend_kind(node)
     if kind == "polars":

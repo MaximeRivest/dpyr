@@ -103,6 +103,21 @@ gold.inner_join(mem, on = col.region)     # in-memory frames bridge into duckdb
                                           # automatically (arrow, zero-copy)
 ```
 
+## Your own functions, row by row
+
+```python
+from dpyr import vectorize
+
+@vectorize(threads=8)
+def classify(text: str, labels: str) -> str: ...      # any Python: a parser, an API, a model
+
+reviews.mutate(topic = classify(col.text, labels="price,quality"))
+```
+
+Typed from the annotation, one call per distinct input, results remembered
+for the session, and a displayed dataframe only runs the rows it shows
+(see the [row functions guide](https://maximerivest.github.io/dpyr/guide/row-functions/)).
+
 ## Interactive by default, lazy when you need it
 
 ```python

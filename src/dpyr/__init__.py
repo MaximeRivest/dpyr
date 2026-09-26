@@ -56,6 +56,7 @@ from .formats.files import Workbook
 from .io import Database, read, read_duckdb, read_ipc
 from .materialize import cache_clear, cache_size, options
 from .plan import plan_hash
+from .rows import RowFunction, vectorize
 from .tidyselect import (
     across,
     contains,
@@ -70,7 +71,7 @@ from .tidyselect import (
     where,
 )
 
-__version__ = "1.9.0"
+__version__ = "1.10.0"
 
 __all__ = [
     # frame + sources
@@ -88,6 +89,8 @@ __all__ = [
     # dtypes
     "DType", "INT64", "FLOAT64", "BOOL", "STR", "DATE", "DATETIME", "NULL",
     "dtypes",
+    # row functions
+    "vectorize", "RowFunction",
     # materialization
     "options", "cache_clear", "cache_size", "plan_hash",
     # errors

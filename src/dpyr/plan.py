@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from collections.abc import Iterable
-from typing import Literal
+from typing import Any, Literal
 
 from . import dtypes as dt
 from .dtypes import DType
@@ -339,6 +339,7 @@ class Summarize(PlanNode):
         # last grouping level.
         schema: Schema = {g: self.child.schema[g] for g in self.child.groups}
         for name, e in self.aggs:
+            infer_dtype(e, self.child.schema, context=f"summarize({name}=...)")  # row calls (S38)
             if not contains_agg(e):
                 hint = (" (window functions like lag/min_rank belong in "
                         "mutate())" if contains_window(e) else "")
@@ -455,6 +456,33 @@ class PivotWider(PlanNode):
                 f"values_from={self.values_from!r})")
 
 
+@dataclass(frozen=True, repr=False)
+class RowMap(PlanNode):
+    """One column computed by running a Python function once per row (S38).
+
+    `args` are (keyword or None, is_column, column name or constant). The
+    step runs in Python between engine steps: materialize.run_row_maps
+    replaces it with an in-memory source before anything is compiled."""
+    child: PlanNode
+    name: str
+    func: Any                                           # dpyr.rows.RowFunction
+    args: tuple[tuple[str | None, bool, Any], ...]
+
+    def __post_init__(self) -> None:
+        _check_cols([v for _k, is_col, v in self.args if is_col], self.child.schema,
+                    f"{self.func.name}()")
+        if self.name in self.child.groups:
+            raise GroupError(f"mutate() can't overwrite the grouping column '{self.name}'")
+        schema = dict(self.child.schema)
+        schema[self.name] = self.func.dtype
+        self._finish(schema, self.child.groups)
+
+    def __repr__(self) -> str:
+        parts = [("" if k is None else f"{k}=") + (f"col.{v}" if is_col else repr(v))
+                 for k, is_col, v in self.args]
+        return f"{self.child!r}.rowmap({self.name}={self.func.label}({', '.join(parts)}))"
+
+
 def plan_hash(node: PlanNode) -> str:
     """Stable cache key for the materialization cache (DESIGN §3)."""
     return hashlib.sha256(repr(node).encode()).hexdigest()[:16]
@@ -492,6 +520,6 @@ __all__ = [
     "PlanNode", "Source", "Filter", "Mutate", "Select", "Rename", "Arrange",
     "Distinct", "Slice", "GroupBy", "Ungroup", "Summarize", "Join", "PivotLonger",
     "Separate", "Unite",
-    "PivotWider", "plan_hash", "used_columns", "Schema", "JoinHow",
+    "PivotWider", "RowMap", "plan_hash", "used_columns", "Schema", "JoinHow",
     "Agg", "Col", "Desc", "Expr", "N",
 ]

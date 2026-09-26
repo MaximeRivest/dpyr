@@ -48,6 +48,7 @@ nav:
       - Joins: guide/joins.md
       - Window functions: guide/window-functions.md
       - Column-wise operations: guide/column-wise.md
+      - Your own functions, row by row: guide/row-functions.md
       - Reshaping: guide/reshaping.md
       - Expressions & autocompletion: guide/expressions.md
       - Backends (polars & duckdb): guide/backends.md

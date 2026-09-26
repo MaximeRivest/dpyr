@@ -327,6 +327,10 @@ def _lit_str(e: Expr) -> str:
 
 
 def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
+    if isinstance(node, p.RowMap):
+        raise DpyrError(
+            f"{node.func.name}() runs Python once per row, so this chain has no single "
+            "engine plan; collect() runs it (show_query() works on the steps before it)")
     if isinstance(node, p.Source):
         payload = resolve(node.token)
         assert isinstance(payload, PolarsPayload)

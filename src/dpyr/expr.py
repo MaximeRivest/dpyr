@@ -333,6 +333,22 @@ class Desc(Expr):
 
 
 @dataclass(frozen=True, eq=False)
+class RowCall(Expr):
+    """A Python function run once per row (S38); built by `vectorize()`.
+
+    `args` / `kwargs` hold expressions (one value per row) and constants
+    (the same value on every row). The frame layer turns it into a RowMap
+    plan step before the plan is built, so it never reaches a compiler."""
+    func: Any                                # a dpyr.rows.RowFunction
+    args: tuple[Any, ...] = ()
+    kwargs: tuple[tuple[str, Any], ...] = ()
+
+    def __repr__(self) -> str:
+        parts = [repr(a) for a in self.args] + [f"{k}={v!r}" for k, v in self.kwargs]
+        return f"{self.func.label}({', '.join(parts)})"
+
+
+@dataclass(frozen=True, eq=False)
 class IfElse(Expr):
     cond: Expr
     true: Expr
@@ -600,6 +616,10 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                 raise ExprTypeError(
                     f"case_when() default dtype {dt_default!r} incompatible with {acc!r}")
             return final
+        if isinstance(e, RowCall):
+            raise ExprTypeError(
+                f"{e.func.name}() runs Python once per row, so it goes in mutate() "
+                "or filter(); summarize or sort its result from there (S38)")
         if isinstance(e, Func):
             arg_types = [rec(a, in_agg) for a in e.args]
             return _func_dtype(e, arg_types)
@@ -663,6 +683,8 @@ def _children(e: Expr) -> tuple[Expr, ...]:
         return (*ops, e.default)
     if isinstance(e, Agg):
         return (e.operand,)
+    if isinstance(e, RowCall):
+        return tuple(a for a in (*e.args, *(v for _k, v in e.kwargs)) if isinstance(a, Expr))
     return ()
 
 
