@@ -196,3 +196,23 @@ def test_duckdb_writes_and_tables_carry_only_the_plan_columns(tmp_path):
     f.to_table("out", con)
     assert [r[0] for r in con.execute("DESCRIBE out").fetchall()] == ["k", "v", "t2"]
     assert [r[0] for r in con.execute("SELECT k FROM out").fetchall()] == [1, 2]
+
+
+# -- logicals average like R: mean(correct) is the share of TRUE -----------------
+
+def test_mean_std_var_of_bools_count_them_as_0_1(make):
+    f = make({"ok": [True, False, True, None], "g": ["a", "a", "b", "b"]})
+    out = f.summarize(m=col.ok.mean(), s=col.ok.std(), v=col.ok.var(),
+                      m_strict=col.ok.mean(na_rm=False)).collect().to_dicts()[0]
+    assert out["m"] == pytest.approx(2 / 3)
+    assert out["v"] == pytest.approx(1 / 3)
+    assert out["s"] == pytest.approx((1 / 3) ** 0.5)
+    assert out["m_strict"] is None
+    grouped = f.group_by(col.g).summarize(m=col.ok.mean()).arrange(col.g).collect()
+    assert grouped["m"].to_list() == [0.5, 1.0]
+    assert f.mutate(share=col.ok.mean()).schema["share"] == d.FLOAT64
+
+
+def test_median_of_bools_is_still_an_error(make):
+    with pytest.raises(d.ExprTypeError, match="numeric"):
+        make({"ok": [True]}).summarize(m=col.ok.median())

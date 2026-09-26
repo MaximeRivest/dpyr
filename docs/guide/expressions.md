@@ -98,8 +98,10 @@ behave differently below.
 |---|---|---|
 | numeric | `.abs()` `.round(digits)` `.floor()` `.ceiling()` `.log()` `.exp()` `.sqrt()` | `.mean()` `.median()` `.sum()` `.std()` `.var()` |
 | string | `.str_detect(pat)` `.str_replace(pat, repl)` `.str_to_lower()` `.str_to_upper()` `.str_len()` | |
+| boolean | | `.sum()` (count of TRUE) `.mean()` (share of TRUE) `.std()` `.var()` |
 | date / datetime | `.year()` `.month()` `.day()` | |
 | any | `.is_na()` `.is_in(values)` `.between(lo, hi)` `.cast(dtype)` | `.min()` `.max()` `.first()` `.last()` `.n_unique()` |
+| list / array / struct | `.is_na()` | `.first()` `.last()` — carried, not compared ([S35](https://github.com/MaximeRivest/dpyr/blob/master/docs/SEMANTICS.md)) |
 
 Aggregates skip missing values by default; pass `na_rm=False` to propagate
 them instead (SEMANTICS S2). String patterns are regular expressions on both

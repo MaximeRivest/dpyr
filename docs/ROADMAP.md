@@ -160,7 +160,8 @@ dataclasses, namedtuples or pydantic models, one per row — with
 `bind_rows()` semantics and every row scanned (S36). List, array and
 struct columns are carried through verbs on both engines under canonical
 dtype names, and refused wherever they would be compared (S35);
-`where(is_nested)` selects them. Fixed: in-engine duckdb writes
+`where(is_nested)` selects them. `.mean()`, `.std()` and `.var()` work on
+booleans as in R — `mean(correct)` is the share of TRUE (S37). Fixed: in-engine duckdb writes
 (`write()`, `to_table()`, `persist()`) no longer leak internal `__rn`
 helper columns after `arrange()`.
 

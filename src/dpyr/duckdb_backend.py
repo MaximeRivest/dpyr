@@ -303,7 +303,8 @@ def _compile_agg(e: Agg, ctx: _Ctx) -> str:
             return (f"CASE WHEN count(*){over} <> count({x}){over} "
                     f"THEN NULL ELSE {result} END")
         return result
-    body = f"{fn}({x}){over}"
+    arg = f"CAST({x} AS DOUBLE)" if in_dt == dt.BOOL else x  # R: 0/1
+    body = f"{fn}({arg}){over}"
     if e.name == "sum" and e.na_rm:
         zero = "0.0" if in_dt == dt.FLOAT64 else "0"
         body = f"COALESCE({body}, {zero})"  # R: sum of nothing is 0

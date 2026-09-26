@@ -240,6 +240,8 @@ def _compile_window(e: Window, ctx: _Ctx) -> pl.Expr:
 
 def _compile_agg(e: Agg, inner: pl.Expr, ctx: _Ctx) -> pl.Expr:
     name = e.name
+    if name in ("mean", "std", "var") and infer_dtype(e.operand, ctx.schema) == dt.BOOL:
+        inner = inner.cast(pl.Float64)  # R: logicals count as 0/1
     if name == "mean":
         return inner.mean()
     if name == "median":

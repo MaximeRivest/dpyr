@@ -39,6 +39,8 @@ _AGGS: dict[str, DType | None] = {
     "n_unique": dt.INT64,  # S13
 }
 _NUMERIC_ONLY_AGGS = {"mean", "median", "std", "var", "sum"}
+# R coerces logicals to 0/1 here: mean(correct) is the share of TRUEs
+_BOOL_AS_NUMBER_AGGS = {"mean", "std", "var", "sum"}
 
 _STR_FUNCS: dict[str, DType] = {
     "str_detect": dt.BOOL,
@@ -202,6 +204,15 @@ class BoolExpr(Col):
 
     def sum(self, na_rm: bool = True) -> Agg:  # count of trues, like R
         return Agg("sum", self, na_rm)
+
+    def mean(self, na_rm: bool = True) -> Agg:  # share of trues, like R
+        return Agg("mean", self, na_rm)
+
+    def std(self, na_rm: bool = True) -> Agg:  # of the 0/1 values, like R
+        return Agg("std", self, na_rm)
+
+    def var(self, na_rm: bool = True) -> Agg:
+        return Agg("var", self, na_rm)
 
 
 @_block_methods(*_STR_METHODS, *_NUM_METHODS)
@@ -522,7 +533,9 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                 raise nested_error(f".{e.name}()", inner)
             if e.name == "sum" and inner == dt.BOOL:
                 return dt.INT64  # sum(bool) counts trues, like R
-            if e.name in _NUMERIC_ONLY_AGGS and not (dt.is_numeric(inner) or inner == dt.NULL):
+            if e.name in _NUMERIC_ONLY_AGGS and not (
+                    dt.is_numeric(inner) or inner == dt.NULL
+                    or (inner == dt.BOOL and e.name in _BOOL_AS_NUMBER_AGGS)):
                 raise ExprTypeError(
                     f".{e.name}() needs a numeric column, got {inner!r} in {e!r}")
             result = _AGGS[e.name]
