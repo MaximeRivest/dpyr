@@ -238,3 +238,18 @@ def test_persist_write_and_to_table_run_the_rows(make, tmp_path):
     assert pl.read_parquet(tmp_path / "x.parquet")["u"].to_list() == ["B", "A", "C", "A"]
     with pytest.raises(d.DpyrError, match="per row"):
         frame.show_query()
+
+
+def test_objects_can_decide_how_they_are_vectorized(make):
+    class Model:
+        def __call__(self, t: str) -> str:
+            return t
+
+        def __dpyr_vectorize__(self, **options):
+            return d.RowFunction(lambda t: f"pinned:{t}", dtype=str, name="model",
+                                 version="v1", threads=options["threads"] or 4)
+
+    assert vectorize(Model(), threads=2).threads == 2
+    f = vectorize(Model())
+    assert f.version == "v1" and f.threads == 4             # the object's own default
+    assert make(WORDS).mutate(u=f(col.t)).collect()["u"][0] == "pinned:b"

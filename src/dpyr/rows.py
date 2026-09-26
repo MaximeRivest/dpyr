@@ -117,8 +117,9 @@ def _resolve_dtype(fn: Callable, dtype: Any, name: str) -> tuple[DType, Any]:
 
     from .polars_backend import PL_DTYPE, canonical_pl, dtype_from_polars
     if dtype is None:
+        import inspect
         try:
-            hints = typing.get_type_hints(fn)
+            hints = typing.get_type_hints(inspect.unwrap(fn))   # wrapped callables: the original's
         except Exception:  # noqa: BLE001 — unresolvable annotations: same as none
             hints = {}
         if "return" not in hints:
@@ -154,14 +155,14 @@ def memo_clear() -> None:
 class RowFunction:
     """A Python function made callable on columns; see ``vectorize``."""
 
-    def __init__(self, fn: Callable, *, dtype: Any = None, threads: int = 1,
+    def __init__(self, fn: Callable, *, dtype: Any = None, threads: int | None = None,
                  errors: str = "raise", version: str = "", name: str | None = None) -> None:
         if errors not in ("raise", "null"):
             raise ValueError("errors must be 'raise' or 'null'")
         self.fn = fn
         self.name = name or getattr(fn, "__name__", None) or type(fn).__name__
         self.dtype, self.pl_dtype = _resolve_dtype(fn, dtype, self.name)
-        self.threads = max(1, int(threads))
+        self.threads = max(1, int(threads or 1))
         self.errors = errors
         self.version = version
         # identity (not just the name) and version take part in plan hashes
@@ -185,7 +186,7 @@ class RowFunction:
         return _MEMO[key][1]
 
 
-def vectorize(fn: Callable | None = None, *, dtype: Any = None, threads: int = 1,
+def vectorize(fn: Callable | None = None, *, dtype: Any = None, threads: int | None = None,
               errors: str = "raise", version: str = "") -> Any:
     """Make a Python function usable on columns: called with a column
     expression anywhere in its arguments, it returns a column expression for
@@ -193,14 +194,24 @@ def vectorize(fn: Callable | None = None, *, dtype: Any = None, threads: int = 1
 
     - ``dtype``: the result type (default: the return annotation); a Python
       type (``str``, ``list[str]``, a dataclass, ...) or a dpyr dtype
-    - ``threads``: rows run concurrently (for functions that wait on I/O)
+    - ``threads``: rows run concurrently (for functions that wait on I/O);
+      default 1, or the object's own default (see below)
     - ``errors``: ``"raise"`` (after every row ran; results that worked are
       kept, so running again retries only the failures) or ``"null"``
     - ``version``: change it when the function's behavior changes without
       its identity changing, so remembered results are not reused
 
-    Use as ``vectorize(fn)``, ``@vectorize`` or ``@vectorize(dtype=...)``."""
+    Use as ``vectorize(fn)``, ``@vectorize`` or ``@vectorize(dtype=...)``.
+
+    An object can decide how it is vectorized by defining
+    ``__dpyr_vectorize__(dtype=, threads=, errors=, version=)`` returning a
+    RowFunction (an AI-function library does, to pin the prompt a column
+    was computed with)."""
     def wrap(f: Callable) -> RowFunction:
+        hook = getattr(f, "__dpyr_vectorize__", None)
+        if callable(hook) and not isinstance(f, type):
+            options = {"dtype": dtype, "threads": threads, "errors": errors, "version": version}
+            return hook(**options)
         return RowFunction(f, dtype=dtype, threads=threads, errors=errors, version=version)
     return wrap if fn is None else wrap(fn)
 
