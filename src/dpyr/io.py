@@ -122,7 +122,8 @@ def read(source: Any, table: str | None = None) -> DFrame | Database | Workbook:
                                           # a link-readable Google Sheet,
                                           # same Workbook/sheet behavior
         read("legacy.sqlite", "users")    # sqlite via duckdb's scanner
-        read({"x": [1, 2]})               # plain Python data
+        read({"x": [1, 2]})               # plain Python data: columns
+        read([{"x": 1}, {"x": 2}])        # ... or records, one per row
         read(polars_or_pandas_dataframe)  # zero/near-zero copy
         read(arrow_table)
         read(hf_dataset)                  # Hugging Face (arrow-backed)
@@ -150,7 +151,8 @@ def read(source: Any, table: str | None = None) -> DFrame | Database | Workbook:
     if matched is None:
         raise DpyrError(
             f"read() doesn't know what to do with {formats.type_name(source)}; "
-            "give it a path, dict, polars/pandas frame, arrow table, numpy "
+            "give it a path, dict, list of records, polars/pandas frame, "
+            "arrow table, numpy "
             "array, torch/jax tensor, Hugging Face dataset, or duckdb "
             "connection")
     name, reader = matched

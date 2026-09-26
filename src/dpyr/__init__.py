@@ -16,6 +16,7 @@ from .errors import (
 from .expr import (
     BoolExpr,
     Expr,
+    NestedExpr,
     NumExpr,
     StrExpr,
     TemporalExpr,
@@ -61,6 +62,7 @@ from .tidyselect import (
     ends_with,
     everything,
     is_bool,
+    is_nested,
     is_numeric,
     is_string,
     matches,
@@ -68,7 +70,7 @@ from .tidyselect import (
     where,
 )
 
-__version__ = "1.8.1"
+__version__ = "1.9.0"
 
 __all__ = [
     # frame + sources
@@ -79,10 +81,10 @@ __all__ = [
     "col", "n", "desc", "if_else", "case_when", "lit", "Expr", "typed_col",
     "lag", "lead", "row_number", "min_rank", "dense_rank", "percent_rank",
     "cum_sum", "cum_min", "cum_max", "coalesce", "replace_na",
-    "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr", "infer_dtype",
+    "NumExpr", "StrExpr", "BoolExpr", "TemporalExpr", "NestedExpr", "infer_dtype",
     # tidyselect / across
     "across", "starts_with", "ends_with", "contains", "matches", "where",
-    "everything", "is_numeric", "is_string", "is_bool",
+    "everything", "is_numeric", "is_string", "is_bool", "is_nested",
     # dtypes
     "DType", "INT64", "FLOAT64", "BOOL", "STR", "DATE", "DATETIME", "NULL",
     "dtypes",

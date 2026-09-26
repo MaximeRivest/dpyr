@@ -150,7 +150,21 @@ primary connection, with a UserWarning so large copies stay visible
 sqlite pairs. Future optimization: ATTACH for file-backed databases
 instead of streaming.
 
+## 1.8.0 / 1.8.1 ✅ (published 2026-06-10)
+Spreadsheets are catalogs: multi-sheet xlsx opens as a Workbook, writes
+preserve other sheets, Google Sheets URLs read directly.
+
+## 1.9.0 ✅
+Row-shaped data and nested columns. `read(list of records)` — dicts,
+dataclasses, namedtuples or pydantic models, one per row — with
+`bind_rows()` semantics and every row scanned (S36). List, array and
+struct columns are carried through verbs on both engines under canonical
+dtype names, and refused wherever they would be compared (S35);
+`where(is_nested)` selects them. Fixed: in-engine duckdb writes
+(`write()`, `to_table()`, `persist()`) no longer leak internal `__rn`
+helper columns after `arrange()`.
+
 ## Post-MVP (parking lot)
-`nest`,
-list-columns, streaming collect, arrow Flight sources, sqlite/postgres
+`nest`/`unnest`/`hoist` and computing on list-columns (1.9.0 carries
+them), streaming collect, arrow Flight sources, sqlite/postgres
 backends via the duckdb SQL layer, plugin API for custom verbs.

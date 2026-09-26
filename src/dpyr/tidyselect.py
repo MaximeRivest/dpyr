@@ -72,6 +72,11 @@ def is_bool(d: DType) -> bool:
     return d == dt.BOOL
 
 
+def is_nested(d: DType) -> bool:
+    """Lists, arrays and structs (S35)."""
+    return d.nested
+
+
 def resolve_selection(items: tuple[Any, ...], schema: Schema,
                       context: str) -> tuple[str, ...]:
     """Expand a mix of names, col refs, selectors and negations into an

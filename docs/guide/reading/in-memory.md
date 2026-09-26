@@ -6,7 +6,8 @@ the same door. `read()` dispatches on the object's type — no flags:
 ```python
 from dpyr import read, col
 
-read({"x": [1, 2], "y": ["a", "b"]})   # plain Python data
+read({"x": [1, 2], "y": ["a", "b"]})   # plain Python data, by column
+read([{"x": 1}, {"x": 2, "y": "b"}])     # ... or by row (records)
 read(pandas_dataframe)                  # near-zero copy
 read(polars_dataframe)                  # zero copy
 read(arrow_table)                       # zero copy
@@ -32,6 +33,42 @@ trees = read({
 
 Keys become column names; lists must all have the same length (the
 error tells you which one doesn't match).
+
+## Records: one dict per row
+
+Data that arrives a row at a time — API responses, logs, evaluation
+results — is usually a list of dicts. `read()` takes it as is:
+
+```python
+runs = read([
+    {"question": "2+2", "answer": "4", "correct": True},
+    {"question": "3*3", "answer": "9", "correct": True, "tags": ["math"]},
+])
+```
+
+It behaves like dplyr's `bind_rows()`: the columns are every key seen,
+in first-seen order, and a key a row lacks is missing in that row.
+Every row is checked, so a key or a type that first shows up in row
+10,000 is kept. Rows can also be dataclasses, namedtuples or pydantic
+models. A column holds one type: `True` next to numbers counts as 1 and
+a date next to datetimes becomes midnight, as in R; any other mix is an
+error naming the column and the two rows.
+
+## Lists and structs
+
+A value that is itself a list or a dict becomes a nested column
+(`List(Str)`, `Struct(input: Int64, output: Int64)`, ...). dpyr carries
+nested columns through every verb — filter by other columns, join,
+arrange by other columns, copy them in `mutate()`, `lag()` them, take
+their `.first()` — and writes them to parquet, JSON lines and arrow.
+It does not compare them: sorting, grouping or joining *by* a nested
+column is an error at build time, as is writing one to CSV or Excel.
+`select(-where(is_nested))` drops them all.
+
+```python
+from dpyr import where, is_nested
+runs.filter(col.correct).select(-where(is_nested))
+```
 
 ## Hugging Face datasets
 

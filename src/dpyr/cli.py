@@ -51,7 +51,7 @@ def generate(paths: list[Path]) -> str:
         "from typing import cast",
         "",
         "from dpyr import DFrame, read",
-        "from dpyr.expr import BoolExpr, NumExpr, StrExpr, TemporalExpr",
+        "from dpyr.expr import BoolExpr, Col, NestedExpr, NumExpr, StrExpr, TemporalExpr",
         "from dpyr.frame import ColsProxy",
         "",
     ]
@@ -60,7 +60,8 @@ def generate(paths: list[Path]) -> str:
         cls = _identifier(path.stem).title().replace("_", "") + "Cols"
         lines.append(f"class {cls}(ColsProxy):")
         for name, dtype in schema.items():
-            lines.append(f"    {_identifier(name)}: {_EXPR_CLASS[dtype]}")
+            kind = _EXPR_CLASS.get(dtype, "NestedExpr" if dtype.nested else "Col")
+            lines.append(f"    {_identifier(name)}: {kind}")
         var = _identifier(path.stem)
         lines += [
             "",

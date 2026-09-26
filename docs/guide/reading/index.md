@@ -36,7 +36,7 @@ format below.
 | `.arrow` / `.feather` / `.ipc` | ✓ | ✓ | [Arrow IPC](arrow.md) |
 | `.db` / `.duckdb` / `.ddb`, `.sqlite` / `.sqlite3`, live connections | ✓ | ✓ | [Databases](databases.md) |
 | `https://`, `s3://`, `hf://` URLs | ✓ | — | [Remote data](remote.md) |
-| dict, polars, pandas, arrow, numpy, torch/jax, 🤗 datasets | ✓ | n/a | [In-memory objects](in-memory.md) |
+| dict, list of records, polars, pandas, arrow, numpy, torch/jax, 🤗 datasets | ✓ | n/a | [In-memory objects](in-memory.md) |
 
 An unknown extension fails with the list of what's supported, so the
 error message is also the documentation. And every source joins every

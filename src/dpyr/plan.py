@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from collections.abc import Iterable
 from typing import Literal
 
 from . import dtypes as dt
@@ -22,7 +23,17 @@ from .errors import (
     ExprTypeError,
     GroupError,
 )
-from .expr import Agg, Col, Desc, Expr, N, contains_agg, contains_window, infer_dtype
+from .expr import (
+    Agg,
+    Col,
+    Desc,
+    Expr,
+    N,
+    contains_agg,
+    contains_window,
+    infer_dtype,
+    nested_error,
+)
 
 Schema = dict[str, DType]
 JoinHow = Literal["inner", "left", "right", "full", "semi", "anti"]
@@ -45,6 +56,17 @@ def _check_cols(names: list[str], schema: Schema, context: str) -> None:
     for name in names:
         if name not in schema:
             raise ColumnNotFoundError(name, schema, context)
+
+
+def _check_flat(names: Iterable[str], schema: Schema, context: str) -> None:
+    """Keys that are compared (sort, group, join, dedup, reshape) must be
+    flat columns: nested ones are carried, not compared (S35)."""
+    for name in names:
+        if dt.is_nested(schema[name]):
+            raise ExprTypeError(
+                f"{context} can't use '{name}' ({schema[name]!r}): dpyr carries "
+                "lists, arrays and structs through verbs but doesn't compare "
+                "them (S35)")
 
 
 @dataclass(frozen=True, repr=False)
@@ -156,7 +178,9 @@ class Arrange(PlanNode):
             raise ExprTypeError("arrange() needs at least one sort key")
         for k in self.keys:
             inner = k.operand if isinstance(k, Desc) else k
-            infer_dtype(inner, self.child.schema, context="arrange()")
+            kt = infer_dtype(inner, self.child.schema, context="arrange()")
+            if dt.is_nested(kt):
+                raise nested_error("arrange()", kt)
         self._finish(self.child.schema, self.child.groups)
 
     def __repr__(self) -> str:
@@ -170,6 +194,7 @@ class Distinct(PlanNode):
 
     def __post_init__(self) -> None:
         _check_cols(list(self.cols), self.child.schema, "distinct()")
+        _check_flat(self.cols or self.child.schema, self.child.schema, "distinct()")
         if self.cols:  # dplyr: distinct(df, a, b) keeps only those (+ groups)
             keep = list(dict.fromkeys((*self.child.groups, *self.cols)))
             schema = {k: self.child.schema[k] for k in keep}
@@ -282,6 +307,7 @@ class GroupBy(PlanNode):
         if not self.keys:
             raise GroupError("group_by() needs at least one column")
         _check_cols(list(self.keys), self.child.schema, "group_by()")
+        _check_flat(self.keys, self.child.schema, "group_by()")
         self._finish(self.child.schema, self.keys)
 
     def __repr__(self) -> str:
@@ -341,6 +367,8 @@ class Join(PlanNode):
     def __post_init__(self) -> None:
         _check_cols(list(self.on), self.left.schema, f"{self.how}_join() left")
         _check_cols(list(self.on), self.right.schema, f"{self.how}_join() right")
+        _check_flat(self.on, self.left.schema, f"{self.how}_join()")
+        _check_flat(self.on, self.right.schema, f"{self.how}_join()")
         for k in self.on:
             if dt.unify(self.left.schema[k], self.right.schema[k]) is None:
                 raise ExprTypeError(
@@ -378,6 +406,7 @@ class PivotLonger(PlanNode):
         if not self.cols:
             raise ExprTypeError("pivot_longer() needs at least one column")
         _check_cols(list(self.cols), self.child.schema, "pivot_longer()")
+        _check_flat(self.cols, self.child.schema, "pivot_longer()")
         value_type: DType = dt.NULL
         for c in self.cols:
             unified = dt.unify(value_type, self.child.schema[c])
@@ -412,6 +441,7 @@ class PivotWider(PlanNode):
 
     def __post_init__(self) -> None:
         _check_cols([self.names_from, self.values_from], self.child.schema, "pivot_wider()")
+        _check_flat([self.names_from, self.values_from], self.child.schema, "pivot_wider()")
         schema = {k: v for k, v in self.child.schema.items()
                   if k not in (self.names_from, self.values_from)}
         self._finish(schema, self.child.groups)

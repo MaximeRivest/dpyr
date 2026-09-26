@@ -73,14 +73,30 @@ _DUCK_TO_DTYPE = {
 def schema_from_duckdb(con: duckdb.DuckDBPyConnection, table_sql: str) -> dict[str, DType]:
     rows = con.execute(f"DESCRIBE SELECT * FROM {table_sql}").fetchall()
     out: dict[str, DType] = {}
+    nested: list[str] = []
     for name, typ, *_ in rows:
         base = typ.split("(")[0].upper()
         if base.startswith("DECIMAL"):
             out[name] = dt.FLOAT64
         elif base in _DUCK_TO_DTYPE:
             out[name] = _DUCK_TO_DTYPE[base]
+        elif typ.endswith("]") or base in ("STRUCT", "MAP"):
+            out[name] = dt.NULL  # placeholder, resolved below (keeps order)
+            nested.append(name)
         else:
             raise DpyrError(f"column '{name}' has unsupported duckdb type {typ}")
+    if nested:
+        # name nested types exactly as the polars side would (S35): read the
+        # arrow schema of an empty result and canonicalize it
+        import polars as pl
+
+        from .polars_backend import dtype_from_polars
+        cols = ", ".join(q(n) for n in nested)
+        empty = pl.from_arrow(con.execute(
+            f"SELECT {cols} FROM {table_sql} LIMIT 0").to_arrow_table())
+        assert isinstance(empty, pl.DataFrame)
+        for name in nested:
+            out[name] = dtype_from_polars(name, empty.schema[name])
     return out
 
 
@@ -664,7 +680,14 @@ def final_sql(node: p.PlanNode) -> str:
         c = compile_plan(node)
     finally:
         _PRIMARY_CON_ID[0] = None
-    return f"{c.sql} ORDER BY {c.order}" if c.order else c.sql
+    # project to the plan's columns: compiled SQL can carry helper columns
+    # (e.g. __rn row numbers that keep sorts stable), which must not leak
+    # into COPY / CREATE TABLE AS results
+    # into COPY / CREATE TABLE AS results. The sort stays inside, where its
+    # keys are in scope; a plain projection over it keeps the order (the
+    # same order-preservation the __rn row numbers themselves rely on).
+    inner = f"{c.sql} ORDER BY {c.order}" if c.order else c.sql
+    return f"SELECT {_cols(node.schema)} FROM ({inner}) t"
 
 
 def connection_of(node: p.PlanNode) -> duckdb.DuckDBPyConnection:

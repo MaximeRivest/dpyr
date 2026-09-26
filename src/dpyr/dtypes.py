@@ -14,6 +14,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class DType:
     name: str
+    nested: bool = False  # List/Array/Struct: carried through, not computed on (S35)
 
     def __repr__(self) -> str:
         return self.name
@@ -34,6 +35,16 @@ TEMPORAL = (DATE, DATETIME)
 
 def is_numeric(dt: DType) -> bool:
     return dt in NUMERIC
+
+
+def nested(name: str) -> DType:
+    """A List/Array/Struct dtype, named canonically (e.g. 'List(Str)'), so
+    the same data has the same dtype on both engines."""
+    return DType(name, nested=True)
+
+
+def is_nested(dt: DType) -> bool:
+    return dt.nested
 
 
 def unify(a: DType, b: DType) -> DType | None:

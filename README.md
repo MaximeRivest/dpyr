@@ -14,8 +14,9 @@ from dpyr import read, col, n, desc
 
 starwars = read("starwars.parquet")   # read() takes anything tabular:
                                       # .parquet/.csv/.arrow/.db paths, dicts,
-                                      # polars/pandas frames, arrow tables,
-                                      # Hugging Face datasets, numpy/torch/jax
+                                      # lists of records, polars/pandas frames,
+                                      # arrow tables, Hugging Face datasets,
+                                      # numpy/torch/jax
 
 (
     starwars

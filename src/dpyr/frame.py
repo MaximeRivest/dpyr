@@ -394,6 +394,8 @@ class DFrame(Generic[S]):
 
     def write_csv(self, path: str) -> None:
         """Write the result as CSV (in-engine COPY on duckdb)."""
+        from .formats.files import _flat_only
+        _flat_only(self, "CSV")
         from .backend import backend_kind
         from .materialize import _plan_needs_python
         if (backend_kind(self._plan) == "duckdb"

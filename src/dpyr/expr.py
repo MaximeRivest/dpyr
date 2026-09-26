@@ -209,6 +209,12 @@ class TemporalExpr(Col):
     """A column statically known to be a date/datetime."""
 
 
+@_block_methods(*_STR_METHODS, *_NUM_METHODS, *_DT_METHODS, "min", "max",
+                "n_unique", "is_in", "between", "cast")
+class NestedExpr(Col):
+    """A list/array/struct column: carried through verbs, not computed on (S35)."""
+
+
 def typed_col(name: str, dtype: DType) -> Col:
     """Schema-aware Col factory: the frame-bound proxy (df.c, Epic 7) and
     stubgen build on this to give type-correct completion surfaces."""
@@ -220,6 +226,8 @@ def typed_col(name: str, dtype: DType) -> Col:
         return BoolExpr(name)
     if dtype in dt.TEMPORAL:
         return TemporalExpr(name)
+    if dt.is_nested(dtype):
+        return NestedExpr(name)
     return Col(name)
 
 
@@ -448,6 +456,12 @@ def _lit_dtype(value: Any) -> DType:
     raise ExprTypeError(f"unsupported literal type: {type(value).__name__}")
 
 
+def nested_error(what: str, dtype: DType) -> ExprTypeError:
+    return ExprTypeError(
+        f"{what} can't use a {dtype!r} column: dpyr carries lists, arrays "
+        "and structs through verbs but doesn't compute on them (S35)")
+
+
 def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                 context: str = "expression") -> DType:
     """Validate `expr` against `schema` and return its dtype.
@@ -475,6 +489,8 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                 return dt.INT64
             assert e.operand is not None
             inner = rec(e.operand, in_agg)
+            if dt.is_nested(inner) and e.name not in ("lag", "lead"):
+                raise nested_error(f"{e.name}()", inner)
             if e.name in ("lag", "lead"):
                 merged = dt.unify(inner, rec(e.default, in_agg))
                 if merged is None:
@@ -493,12 +509,17 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                 raise ExprTypeError(f"cum_sum() needs a numeric, got {inner!r}")
             return inner
         if isinstance(e, Cast):
-            rec(e.operand, in_agg)
+            inner = rec(e.operand, in_agg)
+            for t in (inner, e.to):
+                if dt.is_nested(t):
+                    raise nested_error("cast()", t)
             return e.to
         if isinstance(e, Agg):
             if in_agg:
                 raise ExprTypeError(f"nested aggregation in {e!r}")
             inner = rec(e.operand, True)
+            if dt.is_nested(inner) and e.name not in ("first", "last"):
+                raise nested_error(f".{e.name}()", inner)
             if e.name == "sum" and inner == dt.BOOL:
                 return dt.INT64  # sum(bool) counts trues, like R
             if e.name in _NUMERIC_ONLY_AGGS and not (dt.is_numeric(inner) or inner == dt.NULL):
@@ -525,6 +546,9 @@ def infer_dtype(expr: Expr, schema: Schema, *, in_agg: bool = False,
                     raise ExprTypeError(f"cannot apply {e.op} to {lt!r} and {rt!r} in {e!r}")
                 return out
             if e.op in _COMPARISONS:
+                for side in (lt, rt):
+                    if dt.is_nested(side):
+                        raise nested_error(f"comparison {e.op}", side)
                 if dt.unify(lt, rt) is None:
                     raise ExprTypeError(f"cannot compare {lt!r} with {rt!r} in {e!r}")
                 return dt.BOOL
@@ -586,6 +610,8 @@ def _func_dtype(e: Func, arg_types: list[DType]) -> DType:
     if name == "is_na":
         return dt.BOOL
     if name == "is_in":
+        if dt.is_nested(first):
+            raise nested_error("is_in()", first)
         return dt.BOOL
     if name == "pow":
         out = dt.arith_result("*", arg_types[0], arg_types[1])

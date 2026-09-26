@@ -56,18 +56,62 @@ FROM_PL: dict[Any, DType] = {
 }
 
 
+def canonical_pl(pld: Any) -> Any | None:
+    """The polars dtype dpyr stores a column as: ints widen to Int64, floats
+    to Float64, datetimes to microseconds — recursively inside List/Array/
+    Struct. None when dpyr can't hold the dtype."""
+    if isinstance(pld, pl.Datetime):
+        return pl.Datetime("us")
+    if pld in FROM_PL:
+        mapped = FROM_PL[pld]
+        return pl.Null if mapped == dt.NULL else PL_DTYPE[mapped]
+    if isinstance(pld, pl.List):
+        inner = canonical_pl(pld.inner)
+        return None if inner is None else pl.List(inner)
+    if isinstance(pld, pl.Array):
+        inner = canonical_pl(pld.inner)
+        return None if inner is None else pl.Array(inner, pld.size)
+    if isinstance(pld, pl.Struct):
+        fields = []
+        for f in pld.fields:
+            t = canonical_pl(f.dtype)
+            if t is None:
+                return None
+            fields.append(pl.Field(f.name, t))
+        return pl.Struct(fields)
+    return None
+
+
+def _dtype_name(pld: Any) -> str:
+    if isinstance(pld, pl.List):
+        return f"List({_dtype_name(pld.inner)})"
+    if isinstance(pld, pl.Array):
+        return f"Array({_dtype_name(pld.inner)}, {pld.size})"
+    if isinstance(pld, pl.Struct):
+        body = ", ".join(f"{f.name}: {_dtype_name(f.dtype)}" for f in pld.fields)
+        return f"Struct({body})"
+    if isinstance(pld, pl.Datetime):
+        return dt.DATETIME.name
+    return FROM_PL[pld].name
+
+
+def dtype_from_polars(name: str, pld: Any) -> DType:
+    if isinstance(pld, pl.Datetime):
+        return dt.DATETIME
+    if pld in FROM_PL:
+        return FROM_PL[pld]
+    canon = canonical_pl(pld)
+    if canon is None:
+        raise DpyrError(
+            f"column '{name}' has unsupported dtype {pld}; supported: "
+            "ints, floats, bool, string, date, datetime, and lists, arrays "
+            "and structs of those")
+    return dt.nested(_dtype_name(canon))
+
+
 def schema_from_polars(lf: pl.LazyFrame) -> dict[str, DType]:
-    out: dict[str, DType] = {}
-    for name, pld in lf.collect_schema().items():
-        if isinstance(pld, pl.Datetime):
-            out[name] = dt.DATETIME
-        elif pld in FROM_PL:
-            out[name] = FROM_PL[pld]
-        else:
-            raise DpyrError(
-                f"column '{name}' has unsupported dtype {pld}; supported: "
-                "ints, floats, bool, string, date, datetime")
-    return out
+    return {name: dtype_from_polars(name, pld)
+            for name, pld in lf.collect_schema().items()}
 
 
 def _normalize(lf: pl.LazyFrame) -> pl.LazyFrame:
@@ -81,6 +125,10 @@ def _normalize(lf: pl.LazyFrame) -> pl.LazyFrame:
             casts.append(pl.col(name).cast(pl.Float64))
         elif isinstance(pld, pl.Datetime) and pld != pl.Datetime("us"):
             casts.append(pl.col(name).cast(pl.Datetime("us")))
+        elif isinstance(pld, (pl.List, pl.Array, pl.Struct)):
+            canon = canonical_pl(pld)
+            if canon is not None and canon != pld:
+                casts.append(pl.col(name).cast(canon))
     return lf.with_columns(casts) if casts else lf
 
 

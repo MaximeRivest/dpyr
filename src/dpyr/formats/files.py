@@ -36,6 +36,16 @@ def _copy_in_engine(frame: DFrame, path: str, format_clause: str) -> bool:
     return True
 
 
+def _flat_only(frame: DFrame, fmt: str) -> None:
+    """Text grids can't hold lists or structs; the engines would disagree
+    (polars refuses, duckdb stringifies), so refuse up front (S35)."""
+    bad = [f"{k} ({v!r})" for k, v in frame.schema.items() if v.nested]
+    if bad:
+        raise DpyrError(
+            f"{fmt} can't hold nested columns: {', '.join(bad)}. Write "
+            ".parquet, .jsonl or .arrow instead, or select() them away")
+
+
 def _sink_or_collect(frame: DFrame, path: str, sink: str, write: str,
                      **kwargs) -> None:
     """polars plans stream via sink_* when the plan supports it, else
@@ -95,11 +105,13 @@ def _read_tsv(path: str, table: str | None) -> DFrame:
 
 
 def _write_csv(frame: DFrame, path: str, table: str | None) -> None:
+    _flat_only(frame, "CSV")
     if not _copy_in_engine(frame, path, "FORMAT CSV, HEADER"):
         _sink_or_collect(frame, path, "sink_csv", "write_csv")
 
 
 def _write_tsv(frame: DFrame, path: str, table: str | None) -> None:
+    _flat_only(frame, "TSV")
     if not _copy_in_engine(frame, path, "FORMAT CSV, HEADER, DELIMITER '\t'"):
         _sink_or_collect(frame, path, "sink_csv", "write_csv", separator="\t")
 
@@ -277,6 +289,7 @@ def read_gsheet(url: str, table: str | None) -> DFrame | Workbook:
 
 
 def _write_xlsx(frame: DFrame, path: str, table: str | None) -> None:
+    _flat_only(frame, "Excel")
     import os
     try:
         import polars as pl
