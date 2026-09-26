@@ -2,8 +2,7 @@ name: release
 
 # Publish dpyr to PyPI when a GitHub Release is published.
 # PyPI Trusted Publishing (OIDC): no stored tokens. The publish action
-# uploads PEP 740 attestations. Actions pinned to commit SHAs (same pins
-# as lm15-python's release workflow).
+# uploads PEP 740 attestations. Actions pinned to commit SHAs.
 
 on:
   release:
