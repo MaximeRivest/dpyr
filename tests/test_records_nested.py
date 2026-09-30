@@ -68,8 +68,14 @@ def test_records_combine_like_vctrs():
         dtm.datetime(2020, 1, 1), dtm.datetime(2020, 1, 2, 3)]
 
 
+def test_no_records_is_an_empty_table():
+    # bind_rows(list()) is a 0x0 tibble: "nothing saved yet" is not an error
+    for empty in ([], ()):
+        f = read(empty)
+        assert f.shape == (0, 0) and f.columns == [] and f.to_dicts() == []
+
+
 @pytest.mark.parametrize("bad, message", [
-    ([], "no rows"),
     ([1, 2], "item 0 is of type int"),
     ([{"a": 1}, {"a": "x"}], "column 'a' mixes int .row 0. and str .row 1."),
     ([{"a": [1]}, {"a": ["x"]}], "column 'a' can't be stored"),

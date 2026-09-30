@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 from .errors import DpyrError
 
 if TYPE_CHECKING:
+    import os
+
     import duckdb
 
     from .formats.files import Workbook
@@ -91,10 +93,12 @@ class Database:
         return "\n".join(lines)
 
 
-def read_duckdb(path: str, table: str | None = None) -> Database | DFrame:
+def read_duckdb(path: str | os.PathLike[str],
+                table: str | None = None) -> Database | DFrame:
     """Open a duckdb file. With a table name, returns that frame directly;
     without, returns the catalog as a Database object."""
     import os
+    path = os.fspath(path)
     if not os.path.exists(path):
         raise DpyrError(f"read_duckdb: no such file {path!r} "
                         "(use write_duckdb/to_table to create one)")
@@ -129,6 +133,8 @@ def read(source: Any, table: str | None = None) -> DFrame | Database | Workbook:
         read(hf_dataset)                  # Hugging Face (arrow-backed)
         read(numpy_array_or_tensor)       # numpy / torch / jax
         read(duckdb_connection)           # live connection -> Database
+        read(dpyr_frame)                  # the same frame, unchanged: use
+                                          # read() to normalize any input
     """
     import os
 
@@ -156,20 +162,24 @@ def read(source: Any, table: str | None = None) -> DFrame | Database | Workbook:
             "array, torch/jax tensor, Hugging Face dataset, or duckdb "
             "connection")
     name, reader = matched
-    if table is not None and name not in ("duckdb-connection", "hf-splits"):
+    if table is not None and name not in ("duckdb-connection", "hf-splits",
+                                          "dpyr-catalog"):
         raise DpyrError("read(table=...) only applies to database sources "
                         "and Hugging Face dataset splits")
     return reader(source, table)
 
 
-def read_ipc(path: str) -> DFrame:
+def read_ipc(path: str | os.PathLike[str]) -> DFrame:
     """Read an Arrow IPC (Feather v2) file — memory-mapped, zero-copy."""
+    import os
+
     import polars as pl
 
     from . import plan as p
     from .backend import _REGISTRY, PolarsPayload
     from .frame import DFrame, _file_token
     from .polars_backend import _normalize, schema_from_polars
+    path = os.fspath(path)
     lf = _normalize(pl.scan_ipc(path, memory_map=True))
     token = _file_token("ipc", path)
     _REGISTRY[token] = PolarsPayload(lf)

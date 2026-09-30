@@ -125,9 +125,9 @@ def _read_records(source: Any, table: Any):
         raise DpyrError("read(table=...) only applies to database sources "
                         "and Hugging Face dataset splits")
     if not source:
-        raise DpyrError(
-            "read([]) has no rows to take column names from; for an empty "
-            "table pass empty columns: read({'x': []})")
+        # bind_rows(list()) is a 0x0 tibble: no rows, so no keys either.
+        # read({'x': []}) is the way to name the columns of an empty table
+        return from_polars(pl.DataFrame(), name="records")
     rows = [_record(item, i) for i, item in enumerate(source)]
     # bind_rows semantics: the union of keys in first-seen order, a key a
     # row lacks is missing (null) in that row
@@ -141,6 +141,30 @@ def _read_records(source: Any, table: Any):
     out = pl.from_arrow(arrow)
     assert isinstance(out, pl.DataFrame)
     return from_polars(out, name="records")
+
+
+def _is_dpyr_frame(s: Any) -> bool:
+    from ..frame import DFrame
+    return isinstance(s, DFrame)
+
+
+def _read_dpyr_frame(source: Any, table: Any):
+    # frames are immutable, so the frame itself is the answer (grouping
+    # included): read() can be the one "make this a table" call
+    return source
+
+
+def _is_dpyr_catalog(s: Any) -> bool:
+    from ..io import Database
+    from .files import Workbook
+    return isinstance(s, (Database, Workbook))
+
+
+def _read_dpyr_catalog(source: Any, table: Any):
+    # as for a path: no name -> the catalog, a name -> that table/sheet
+    if table is None:
+        return source
+    return source[table]
 
 
 def _is_duck_con(s: Any) -> bool:
@@ -227,7 +251,10 @@ def _read_jax(source: Any, table: Any):
 
 
 # registration order matters only where predicates overlap: the HF
-# DatasetDict (a dict subclass) must beat the plain-dict reader
+# DatasetDict (a dict subclass) must beat the plain-dict reader.
+# Everything read() returns, read() takes back unchanged.
+object_reader("dpyr-frame", _is_dpyr_frame, _read_dpyr_frame)
+object_reader("dpyr-catalog", _is_dpyr_catalog, _read_dpyr_catalog)
 object_reader("hf-splits", _is_hf_dict, _read_hf_dict)
 object_reader("dict", _is_plain_dict, _read_dict)
 object_reader("records", lambda s: isinstance(s, (list, tuple)), _read_records)

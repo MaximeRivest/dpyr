@@ -262,6 +262,54 @@ def test_read_is_the_universal_ingest():
         d.read(42)
 
 
+def test_read_takes_back_what_it_returns(tmp_path):
+    # read() is the one "make this a table" call: a dpyr frame passes
+    # through unchanged, like pd.DataFrame(df)
+    f = d.read({"x": [1, 2]})
+    assert d.read(f) is f
+    g = f.group_by(col.x)
+    assert d.read(g) is g and d.read(g).groups == ("x",)
+    with pytest.raises(d.DpyrError, match="only applies to database"):
+        d.read(f, "t")
+    f.write(str(tmp_path / "shop.db"), "t")
+    db = d.read(str(tmp_path / "shop.db"))
+    assert d.read(db) is db
+    assert d.read(db, "t").to_dicts() == [{"x": 1}, {"x": 2}]
+
+
+def test_to_dicts_gives_plain_rows():
+    rows = [{"x": 1, "y": "a"}, {"x": 2, "y": None}]
+    f = d.read(rows)
+    assert f.to_dicts() == rows == list(f)
+    assert f.filter(col.x > 1).to_dicts() == rows[1:]
+
+
+@pytest.mark.parametrize("engine", ["polars", "duckdb"])
+def test_file_functions_take_path_objects(tmp_path, engine):
+    # the duckdb engine writes parquet/csv in-engine and used to call
+    # str methods on the path, so a pathlib.Path broke only there
+    data = {"x": [1, 2]}
+    if engine == "duckdb":
+        con = duckdb.connect()
+        con.execute("CREATE TABLE t AS SELECT * FROM (VALUES (1),(2)) v(x)")
+        f = d.read(con, "t")
+    else:
+        f = d.read(data)
+    expected = [{"x": 1}, {"x": 2}]
+    f.write_parquet(tmp_path / "a.parquet")
+    assert d.read_parquet(tmp_path / "a.parquet").arrange(col.x).to_dicts() == expected
+    f.write_csv(tmp_path / "a.csv")
+    assert d.read_csv(tmp_path / "a.csv").arrange(col.x).to_dicts() == expected
+    f.write_ipc(tmp_path / "a.arrow")
+    assert d.read_ipc(tmp_path / "a.arrow").arrange(col.x).to_dicts() == expected
+    f.write_duckdb(tmp_path / "a.db", "t")
+    assert d.read_duckdb(tmp_path / "a.db", "t").arrange(col.x).to_dicts() == expected
+    f.write(tmp_path / "b.jsonl")
+    assert d.read(tmp_path / "b.jsonl").arrange(col.x).to_dicts() == expected
+    # the source label stays a plain string
+    assert d.read_parquet(tmp_path / "a.parquet")._plan.name == str(tmp_path / "a.parquet")
+
+
 # -- array / tensor / dataset interop --------------------------------------------
 
 def test_read_numpy_arrays():

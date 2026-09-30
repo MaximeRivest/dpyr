@@ -14,10 +14,21 @@ read(arrow_table)                       # zero copy
 read(numpy_2d_array)                    # columns column_0, column_1, ...
 read(torch_or_jax_tensor)               # CPU tensors
 read(hf_dataset)                        # Hugging Face, arrow-backed
+read(dpyr_dataframe)                    # the same frame, unchanged
 ```
 
 This is the everyday bridge from other libraries: whatever a colleague's
 pandas script produces, `read()` it and continue in dpyr verbs.
+
+Because a dpyr dataframe goes through unchanged (like `pd.DataFrame(df)`),
+a function that accepts "a table or anything like one" needs a single
+line to normalize its input:
+
+```python
+def translate_papers(papers):
+    papers = read(papers)   # dpyr frame, pandas frame, records, path, ...
+    ...
+```
 
 ## Dicts: the quick way to test something
 
@@ -49,7 +60,10 @@ runs = read([
 It behaves like dplyr's `bind_rows()`: the columns are every key seen,
 in first-seen order, and a key a row lacks is missing in that row.
 Every row is checked, so a key or a type that first shows up in row
-10,000 is kept. Rows can also be dataclasses, namedtuples or pydantic
+10,000 is kept. An empty list is an empty table with no columns, as
+`bind_rows(list())` is in R — so "nothing saved yet" needs no special
+case. To give an empty table column names, pass empty columns:
+`read({"title": [], "score": []})`. Rows can also be dataclasses, namedtuples or pydantic
 models. A column holds one type: `True` next to numbers counts as 1 and
 a date next to datetimes becomes midnight, as in R; any other mix is an
 error naming the column and the two rows.
@@ -85,6 +99,8 @@ A single `Dataset` (already one split) needs no second argument.
 
 ## Getting back out
 
+`to_dicts()` gives plain Python rows, one dict per row — the reverse of
+reading records (iterating, `for row in frame`, yields the same dicts).
 `collect()` gives a polars DataFrame, and a dataframe also exits directly
 with `to_pandas()`, `to_numpy()`, `to_torch()`, and `to_jax()`. The
 [backends guide](../backends.md#ml-data-hugging-face-datasets-numpy-tensors)

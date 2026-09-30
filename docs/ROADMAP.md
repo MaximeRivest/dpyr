@@ -176,6 +176,15 @@ failures that keep the work already done.
 A displayed dataframe shows `options.preview_rows` rows: polars no longer
 cuts the printout to its own 10-row default.
 
+## 1.11.0
+`read()` is the one "make this a table" call: a dpyr dataframe (grouped
+or not), a Database and a Workbook go through unchanged, and a second
+argument picks a table or sheet from the last two. `read([])` is an
+empty 0x0 table, like `bind_rows(list())`. `to_dicts()` returns plain
+rows. Every function that takes a file path accepts `pathlib.Path`;
+fixed: `write_parquet()`/`write_csv()` on duckdb-backed frames crashed
+on a `Path`.
+
 ## Post-MVP (parking lot)
 `nest`/`unnest`/`hoist` and computing on list-columns (1.9.0 carries
 them), streaming collect, arrow Flight sources, sqlite/postgres

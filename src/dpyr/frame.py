@@ -21,6 +21,8 @@ from .expr import desc as desc_
 from .materialize import collect, options, persist_source, preview
 
 if TYPE_CHECKING:
+    import os
+
     import duckdb
     import pandas as pd
     import polars as pl
@@ -187,6 +189,11 @@ class DFrame(Generic[S]):
                 "to_pandas() needs pandas: pip install 'dpyr[pandas]'") from err
         return self.collect().to_pandas()
 
+    def to_dicts(self) -> list[dict[str, Any]]:
+        """Collect into plain Python rows, one dict per row — the reverse
+        of read(list of records)."""
+        return self.collect().to_dicts()
+
     def to_numpy(self) -> Any:
         """Collect into a 2-D numpy array (column order preserved)."""
         return self.collect().to_numpy()
@@ -347,10 +354,13 @@ class DFrame(Generic[S]):
                 "instead of to_view()")
         return self._create_in_engine("VIEW", name, landing, temporary)
 
-    def write_duckdb(self, path: str, table: str) -> DFrame:
+    def write_duckdb(self, path: str | os.PathLike[str], table: str) -> DFrame:
         """Persist the result as a table inside a duckdb file (creating
         the file if needed) — the modern 'save as CSV'."""
+        import os
+
         from .io import _file_con
+        path = os.fspath(path)
         return self.to_table(table, con=_file_con(path))
 
     def show_query(self) -> str:
@@ -363,9 +373,11 @@ class DFrame(Generic[S]):
         from .polars_backend import compile_plan as _pc
         return _pc(self._plan).explain()
 
-    def write_parquet(self, path: str) -> None:
+    def write_parquet(self, path: str | os.PathLike[str]) -> None:
         """Write the result to parquet. duckdb plans COPY in-engine; polars
         plans stream via sink_parquet when possible."""
+        import os
+        path = os.fspath(path)
         from .backend import backend_kind
         from .materialize import _plan_needs_python
         if (backend_kind(self._plan) == "duckdb"
@@ -387,7 +399,8 @@ class DFrame(Generic[S]):
         except Exception:
             self.collect().write_parquet(path)
 
-    def write(self, path: str, table: str | None = None) -> DFrame | None:
+    def write(self, path: str | os.PathLike[str],
+              table: str | None = None) -> DFrame | None:
         """The one way out to files: dispatches on extension —
         .parquet/.pq, .csv, .tsv, .json, .jsonl/.ndjson,
         .arrow/.feather/.ipc, .xlsx, and .db/.duckdb/.ddb (give a table
@@ -411,8 +424,10 @@ class DFrame(Generic[S]):
                 f"write(table=...) does not apply to {fmt.name} files")
         return fmt.writer(self, path, table)
 
-    def write_csv(self, path: str) -> None:
+    def write_csv(self, path: str | os.PathLike[str]) -> None:
         """Write the result as CSV (in-engine COPY on duckdb)."""
+        import os
+        path = os.fspath(path)
         from .formats.files import _flat_only
         _flat_only(self, "CSV")
         from .backend import backend_kind
@@ -436,8 +451,10 @@ class DFrame(Generic[S]):
         except Exception:
             self.collect().write_csv(path)
 
-    def write_ipc(self, path: str) -> None:
+    def write_ipc(self, path: str | os.PathLike[str]) -> None:
         """Write the result as an Arrow IPC (Feather v2) file."""
+        import os
+        path = os.fspath(path)
         from .backend import backend_kind
         if backend_kind(self._plan) == "polars":
             try:
@@ -715,22 +732,28 @@ def _file_token(kind: str, path: str) -> str:
         return f"{kind}:{path}"
 
 
-def read_parquet(path: str) -> DFrame:
+def read_parquet(path: str | os.PathLike[str]) -> DFrame:
+    import os
+
     import polars as pl
 
     from .backend import _REGISTRY
     from .polars_backend import _normalize, schema_from_polars
+    path = os.fspath(path)
     lf = _normalize(pl.scan_parquet(path))
     token = _file_token("parquet", path)
     _REGISTRY[token] = PolarsPayload(lf)
     return DFrame(p.Source(path, tuple(schema_from_polars(lf).items()), token))
 
 
-def read_csv(path: str) -> DFrame:
+def read_csv(path: str | os.PathLike[str]) -> DFrame:
+    import os
+
     import polars as pl
 
     from .backend import _REGISTRY
     from .polars_backend import _normalize, schema_from_polars
+    path = os.fspath(path)
     lf = _normalize(pl.scan_csv(path))
     token = _file_token("csv", path)
     _REGISTRY[token] = PolarsPayload(lf)

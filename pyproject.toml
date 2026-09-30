@@ -1,6 +1,6 @@
 [project]
 name = "dpyr"
-version = "1.10.1"
+version = "1.11.0"
 description = "dplyr for Python: tidy piped verbs over polars and duckdb, with real autocompletion and dplyr-verified semantics."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,7 @@ excel = [
 
 [project.urls]
 Repository = "https://github.com/MaximeRivest/dpyr"
+Changelog = "https://github.com/MaximeRivest/dpyr/blob/master/CHANGELOG.md"
 
 [project.scripts]
 dpyr = "dpyr.cli:main"
