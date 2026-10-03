@@ -36,7 +36,8 @@ _VERBS = ("filter", "mutate", "select", "rename", "arrange", "distinct",
           "summarize", "summarise", "count", "inner_join", "left_join",
           "right_join", "full_join", "semi_join", "anti_join",
           "pivot_longer", "pivot_wider", "pull", "separate", "unite",
-          "relocate", "slice_min", "slice_max")
+          "relocate", "slice_min", "slice_max", "unnest", "unnest_longer",
+          "unnest_wider")
 
 
 def _polish_tracebacks(cls: type) -> type:
@@ -537,6 +538,32 @@ class DFrame(Generic[S]):
                  remove: bool = True) -> DFrame:
         return self._spawn(p.Separate(self._plan, _name(column, "separate()"),
                                       tuple(into), sep, remove))
+
+    def unnest_longer(self, column: ColRef, keep_empty: bool = False) -> DFrame:
+        """One row per element of a list column, the other columns repeated
+        (tidyr's ``unnest_longer``). A row whose list is empty or missing is
+        dropped; ``keep_empty=True`` keeps it, with a null element."""
+        return self._spawn(p.UnnestLonger(self._plan, _name(column, "unnest_longer()"),
+                                          keep_empty))
+
+    def unnest_wider(self, column: ColRef, names_sep: str | None = None) -> DFrame:
+        """One column per field of a struct column, in its place (tidyr's
+        ``unnest_wider``). A missing struct gives nulls. ``names_sep="_"``
+        names the new columns ``<column>_<field>``, for fields named like
+        existing columns."""
+        return self._spawn(p.UnnestWider(self._plan, _name(column, "unnest_wider()"),
+                                         names_sep))
+
+    def unnest(self, column: ColRef, keep_empty: bool = False,
+               names_sep: str | None = None) -> DFrame:
+        """A list of records becomes rows and columns (tidyr's ``unnest`` of a
+        list of data frames): ``unnest_longer``, then ``unnest_wider`` when
+        the elements are records. A list of plain values only gets longer."""
+        name = _name(column, "unnest()")
+        longer = self.unnest_longer(name, keep_empty=keep_empty)
+        if not longer._plan.schema[name].name.startswith("Struct("):
+            return longer
+        return longer.unnest_wider(name, names_sep=names_sep)
 
     def unite(self, new: str, cols: list[ColRef], sep: str = "_",
               remove: bool = True, na_rm: bool = False) -> DFrame:

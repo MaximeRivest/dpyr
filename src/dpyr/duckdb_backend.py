@@ -571,6 +571,29 @@ def compile_plan(node: p.PlanNode) -> _Compiled:
         return _Compiled(
             f"SELECT {', '.join(sep_items)} FROM ({c.sql}) t", c.order)
 
+    if isinstance(node, p.UnnestLonger):
+        c = compile_plan(node.child)
+        col = q(node.column)
+        # tidyr drops a row whose list is empty or missing; keep_empty gives
+        # it one null element instead (a NULL list casts to the column's type)
+        target = (f"CASE WHEN len({col}) > 0 THEN {col} ELSE [NULL] END"
+                  if node.keep_empty else col)
+        # order: the input's rows in order, then each list's elements in order
+        rn, ix = _rn_name(), _uniq("uix")
+        over = f"ORDER BY {c.order}" if c.order else ""
+        numbered = f"SELECT *, row_number() OVER ({over}) AS {q(rn)} FROM ({c.sql}) t"
+        sql = (f"SELECT * EXCLUDE ({col}), unnest({target}) AS {col}, "
+               f"generate_subscripts({target}, 1) AS {q(ix)} FROM ({numbered}) t")
+        return _Compiled(sql, f"{q(rn)} ASC, {q(ix)} ASC")
+
+    if isinstance(node, p.UnnestWider):
+        c = compile_plan(node.child)
+        col = q(node.column)
+        new_cols = ", ".join(f"struct_extract({col}, {sql_lit(f)}) AS {q(node.new_name(f))}"
+                             for f in node.fields)
+        sql = f"SELECT * EXCLUDE ({col}){', ' if new_cols else ''}{new_cols} FROM ({c.sql}) t"
+        return _Compiled(sql, c.order)
+
     if isinstance(node, p.Unite):
         c = compile_plan(node.child)
         if node.na_rm:

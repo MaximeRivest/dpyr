@@ -47,6 +47,59 @@ def is_nested(dt: DType) -> bool:
     return dt.nested
 
 
+def _top_level_split(body: str) -> list[str]:
+    """Split 'a: Str, b: List(Int64)' at the commas outside parentheses."""
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(body):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(body[start:i].strip())
+            start = i + 1
+    parts.append(body[start:].strip())
+    return parts
+
+
+def from_name(name: str) -> DType:
+    """The dtype a canonical name stands for ('Str', 'List(Int64)', ...)."""
+    for d in ALL_DTYPES:
+        if d.name == name:
+            return d
+    return nested(name)
+
+
+def list_inner(d: DType) -> DType | None:
+    """The element dtype of a List or Array dtype; None for anything else."""
+    if d.name.startswith("List(") and d.name.endswith(")"):
+        return from_name(d.name[len("List("):-1])
+    if d.name.startswith("Array(") and d.name.endswith(")"):
+        inner, _size = d.name[len("Array("):-1].rsplit(",", 1)
+        return from_name(inner.strip())
+    return None
+
+
+def struct_fields(d: DType) -> list[tuple[str, DType]] | None:
+    """The (name, dtype) fields of a Struct dtype, in order; None for
+    anything else. Read back from the canonical name, so a field name that
+    itself contains ', ' or ': ' or parentheses can't be read (an error)."""
+    if not (d.name.startswith("Struct(") and d.name.endswith(")")):
+        return None
+    body = d.name[len("Struct("):-1]
+    if not body:
+        return []
+    fields = []
+    for part in _top_level_split(body):
+        name, sep, type_name = part.partition(": ")
+        known = (any(type_name == x.name for x in ALL_DTYPES)
+                 or type_name.startswith(("List(", "Array(", "Struct(")))
+        if not sep or not name or not known:
+            raise ValueError(f"can't read the fields of {d.name}")
+        fields.append((name, from_name(type_name)))
+    return fields
+
+
 def unify(a: DType, b: DType) -> DType | None:
     """Common supertype for branch results (if_else, case_when, fill values).
 

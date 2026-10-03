@@ -74,6 +74,7 @@ R and the engines genuinely disagree, the decision is documented in
 | `cumsum()`, `dense_rank()`, `percent_rank()` | `cum_sum()`, `dense_rank()`, `percent_rank()` |
 | `slice_min(x, n)`, `slice_max(x, n)` (ties kept) | `slice_min(col.x, n)`, `slice_max(col.x, n)` |
 | `separate()`, `unite()`, `relocate()` | `separate()`, `unite()`, `relocate()` |
+| `unnest()`, `unnest_longer()`, `unnest_wider()` | `unnest()`, `unnest_longer()`, `unnest_wider()` |
 | `coalesce()`, `replace_na()` | `coalesce()`, `replace_na()` |
 
 Grouped `mutate`/`filter` are windowed per group, `summarize` peels one

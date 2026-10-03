@@ -4,6 +4,26 @@ Every release of dpyr, newest first. Versions follow
 [semantic versioning](https://semver.org). Numbers like S36 point to the
 decision table in [docs/SEMANTICS.md](docs/SEMANTICS.md).
 
+## 1.12.0 — 2026-10-03
+
+A list of records becomes rows and columns.
+
+### Added
+- `df.unnest_longer(col.x)`: one row per element of a list column, the
+  other columns repeated, as tidyr's `unnest_longer()`. A row whose list
+  is empty or missing is dropped; `keep_empty=True` keeps it with a null
+  element (S39).
+- `df.unnest_wider(col.x)`: one column per field of a struct column, in
+  its place, as tidyr's `unnest_wider()`. A missing record gives nulls. A
+  field named like an existing column is an error, which
+  `names_sep="_"` solves by naming the new columns `x_field`.
+- `df.unnest(col.x)`: both at once for a list of records, as tidyr's
+  `unnest()` of a list of data frames. This is how a row function that
+  returns `list[SomeDataclass]` becomes one row per record:
+  `papers.mutate(items=extract(col.text)).unnest(col.items)`.
+- Both engines, with row order kept: each input row in order, then each
+  list in order.
+
 ## 1.11.0 — 2026-09-30
 
 `read()` is the one "make this a table" call.

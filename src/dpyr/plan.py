@@ -261,6 +261,82 @@ class Separate(PlanNode):
 
 
 @dataclass(frozen=True, repr=False)
+class UnnestLonger(PlanNode):
+    """tidyr::unnest_longer — one row per element of a list column; the
+    other columns are repeated. Rows whose list is empty or missing are
+    dropped, or kept once with a null element (keep_empty)."""
+    child: PlanNode
+    column: str
+    keep_empty: bool = False
+
+    def __post_init__(self) -> None:
+        _check_cols([self.column], self.child.schema, "unnest_longer()")
+        inner = dt.list_inner(self.child.schema[self.column])
+        if inner is None:
+            raise ExprTypeError(
+                f"unnest_longer() needs a list column, got '{self.column}' "
+                f"({self.child.schema[self.column]!r})")
+        schema = dict(self.child.schema)
+        schema[self.column] = inner
+        self._finish(schema, self.child.groups)
+
+    def __repr__(self) -> str:
+        return (f"{self.child!r}.unnest_longer({self.column}, "
+                f"keep_empty={self.keep_empty})")
+
+
+@dataclass(frozen=True, repr=False)
+class UnnestWider(PlanNode):
+    """tidyr::unnest_wider — one column per field of a struct column, in
+    its place. A missing struct gives nulls in every field. A field named
+    like an existing column is an error unless names_sep prefixes the new
+    names with the column's ('a' + '_' + 'q' → 'a_q')."""
+    child: PlanNode
+    column: str
+    names_sep: str | None = None
+
+    def __post_init__(self) -> None:
+        _check_cols([self.column], self.child.schema, "unnest_wider()")
+        kind = self.child.schema[self.column]
+        try:
+            fields = dt.struct_fields(kind)
+        except ValueError as err:
+            raise ExprTypeError(f"unnest_wider(): {err}") from None
+        if fields is None:
+            hint = (" (a list column: unnest_longer() it first, or unnest() "
+                    "does both)") if dt.list_inner(kind) is not None else ""
+            raise ExprTypeError(
+                f"unnest_wider() needs a struct column, got '{self.column}' "
+                f"({kind!r}){hint}")
+        schema: Schema = {}
+        for k, v in self.child.schema.items():
+            if k != self.column:
+                schema[k] = v
+                continue
+            for field_name, field_type in fields:
+                new = self.new_name(field_name)
+                if new in self.child.schema and new != self.column:
+                    raise DuplicateColumnError(
+                        new, f"unnest_wider() (use names_sep='_' to name it "
+                             f"'{self.column}_{field_name}')")
+                schema[new] = field_type
+        self._finish(schema, self.child.groups)
+
+    def new_name(self, field_name: str) -> str:
+        if self.names_sep is None:
+            return field_name
+        return f"{self.column}{self.names_sep}{field_name}"
+
+    @property
+    def fields(self) -> list[str]:
+        return [f for f, _t in dt.struct_fields(self.child.schema[self.column]) or []]
+
+    def __repr__(self) -> str:
+        return (f"{self.child!r}.unnest_wider({self.column}, "
+                f"names_sep={self.names_sep!r})")
+
+
+@dataclass(frozen=True, repr=False)
 class Unite(PlanNode):
     """tidyr::unite — paste several columns into one string column placed
     at the position of the first source column. na_rm=False renders missing
@@ -519,7 +595,7 @@ def used_columns(e: Expr) -> set[str]:
 __all__ = [
     "PlanNode", "Source", "Filter", "Mutate", "Select", "Rename", "Arrange",
     "Distinct", "Slice", "GroupBy", "Ungroup", "Summarize", "Join", "PivotLonger",
-    "Separate", "Unite",
+    "Separate", "Unite", "UnnestLonger", "UnnestWider",
     "PivotWider", "RowMap", "plan_hash", "used_columns", "Schema", "JoinHow",
     "Agg", "Col", "Desc", "Expr", "N",
 ]

@@ -1,7 +1,8 @@
 # Reshaping
 
 dpyr ships the tidyr-flavored reshaping verbs as plain `DFrame` methods:
-`pivot_longer`, `pivot_wider`, `separate`, `unite`, and `relocate`. They run
+`pivot_longer`, `pivot_wider`, `separate`, `unite`, `unnest` (with
+`unnest_longer` and `unnest_wider`), and `relocate`. They run
 on either backend — every example below works the same whether your dataframe
 came from `read()` on plain Python data (polars) or on a duckdb connection
 (SQL pushdown). If you know
@@ -292,6 +293,80 @@ shape: (4, 2)
 
 As with `separate`, `remove=False` keeps the source columns (right after the
 new one).
+
+## Lists of records: `unnest`
+
+A column can hold a list in every row: the tags of a post, or the records a
+row function returned (`list[SomeDataclass]`). `unnest_longer` gives one row
+per element and repeats the other columns. A row whose list is empty is
+dropped, as in tidyr; `keep_empty=True` keeps it with a null.
+
+```python
+papers = read([
+    {"paper": "P1", "analyses": [{"method": "t_test", "outcome": "mass"},
+                                 {"method": "anova", "outcome": "length"}]},
+    {"paper": "P2", "analyses": []},
+    {"paper": "P3", "analyses": [{"method": "mixed_model", "outcome": "counts"}]},
+])
+print(papers.unnest_longer(col.analyses))
+```
+
+```text
+shape: (3, 2)
+┌───────┬──────────────────────────┐
+│ paper ┆ analyses                 │
+│ ---   ┆ ---                      │
+│ str   ┆ struct[2]                │
+╞═══════╪══════════════════════════╡
+│ P1    ┆ {"t_test","mass"}        │
+│ P1    ┆ {"anova","length"}       │
+│ P3    ┆ {"mixed_model","counts"} │
+└───────┴──────────────────────────┘
+```
+
+Each element is still a record. `unnest_wider` gives one column per field,
+in the record's place:
+
+```python
+print(papers.unnest_longer(col.analyses).unnest_wider(col.analyses))
+```
+
+```text
+shape: (3, 3)
+┌───────┬─────────────┬─────────┐
+│ paper ┆ method      ┆ outcome │
+│ ---   ┆ ---         ┆ ---     │
+│ str   ┆ str         ┆ str     │
+╞═══════╪═════════════╪═════════╡
+│ P1    ┆ t_test      ┆ mass    │
+│ P1    ┆ anova       ┆ length  │
+│ P3    ┆ mixed_model ┆ counts  │
+└───────┴─────────────┴─────────┘
+```
+
+`unnest` does both in one step, and from there it is an ordinary table:
+
+```python
+print(papers.unnest(col.analyses).count(col.method))
+```
+
+```text
+shape: (3, 2)
+┌─────────────┬─────┐
+│ method      ┆ n   │
+│ ---         ┆ --- │
+│ str         ┆ i64 │
+╞═════════════╪═════╡
+│ anova       ┆ 1   │
+│ mixed_model ┆ 1   │
+│ t_test      ┆ 1   │
+└─────────────┴─────┘
+```
+
+A field named like a column that is already there is an error;
+`names_sep="_"` names the new columns `analyses_method`, `analyses_outcome`
+instead. A missing record gives nulls in every field. Rows keep their order:
+each input row in turn, then its list in order (SEMANTICS S39).
 
 ## Reordering columns: `relocate`
 

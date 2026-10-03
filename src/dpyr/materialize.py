@@ -181,7 +181,8 @@ def _row_local(node: p.PlanNode) -> bool:
     from .expr import contains_agg, contains_window
     if isinstance(node, p.Mutate):
         return not any(contains_agg(e) or contains_window(e) for _n, e in node.exprs)
-    return isinstance(node, (p.RowMap, p.Select, p.Rename, p.GroupBy, p.Ungroup))
+    return isinstance(node, (p.RowMap, p.Select, p.Rename, p.GroupBy, p.Ungroup,
+                             p.UnnestWider))
 
 
 def _head_before_row_maps(node: p.PlanNode, k: int) -> tuple[p.PlanNode, p.PlanNode]:
