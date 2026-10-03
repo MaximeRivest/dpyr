@@ -408,25 +408,25 @@ def compile_plan(node: p.PlanNode) -> pl.LazyFrame:
 
     if isinstance(node, p.UnnestLonger):
         lf = compile_plan(node.child)
-        c = node.column
-        if node.child.schema[c].name.startswith("Array("):
-            lf = lf.with_columns(pl.col(c).arr.to_list())
+        name = node.column
+        if node.child.schema[name].name.startswith("Array("):
+            lf = lf.with_columns(pl.col(name).arr.to_list())
         if not node.keep_empty:
             # tidyr drops a row whose list is empty or missing; polars'
             # explode would keep it as one null element
-            lf = lf.filter(pl.col(c).list.len() > 0)
-        return lf.explode(c).select(list(node.schema))
+            lf = lf.filter(pl.col(name).list.len() > 0)
+        return lf.explode(name).select(list(node.schema))
 
     if isinstance(node, p.UnnestWider):
         lf = compile_plan(node.child)
-        exprs = []
-        for k in node.child.schema:
-            if k != node.column:
-                exprs.append(pl.col(k))
+        wider: list[pl.Expr] = []
+        for column in node.child.schema:
+            if column != node.column:
+                wider.append(pl.col(column))
                 continue
-            for f in node.fields:
-                exprs.append(pl.col(k).struct.field(f).alias(node.new_name(f)))
-        return lf.select(exprs)
+            for field_name in node.fields:
+                wider.append(pl.col(column).struct.field(field_name).alias(node.new_name(field_name)))
+        return lf.select(wider)
 
     if isinstance(node, p.Unite):
         lf = compile_plan(node.child)
